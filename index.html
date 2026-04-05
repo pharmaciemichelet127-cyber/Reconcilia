@@ -853,7 +853,7 @@ Si un champ est absent met "". Pour les EAN: extrais TOUS les codes barres/EAN/r
     const res = await fetch('/api/claude', {
       method:'POST',
       headers:apiHeaders(),
-      body: JSON.stringify({ model:MODEL, max_tokens:1000, messages:[{role:'user', content}] })
+      body: JSON.stringify({ model:MODEL, max_tokens:4000, messages:[{role:'user', content}] })
     });
 
     const data = await res.json();
