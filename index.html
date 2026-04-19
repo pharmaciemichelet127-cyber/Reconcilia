@@ -1098,8 +1098,8 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
           <button class="btn btn-secondary btn-sm" onclick="if(confirm('Supprimer toutes les réceptions LGPI ?')){lgpiReceptions=[];renderLgpiPage();saveAll();}" style="margin-left:auto;font-size:11px;color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button>
         </div>
         <!-- En-tête tableau -->
-        <div style="display:grid;grid-template-columns:100px 1fr 110px 110px 90px 100px;gap:8px;padding:8px 20px;background:var(--surface2);border-bottom:2px solid var(--border);font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.4px">
-          <span>N° BL</span><span>Fournisseur</span><span>Montant HT</span><span>Date</span><span>Importé/Traité</span><span>Statut / Actions</span>
+        <div style="display:grid;grid-template-columns:100px 1fr 110px 110px 90px 80px;gap:8px;padding:8px 20px;background:var(--surface2);border-bottom:2px solid var(--border);font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.4px">
+          <span>N° BL</span><span>Fournisseur</span><span>Montant HT</span><span>Date</span><span>Importé le</span><span style="text-align:right">Actions</span>
         </div>
         <div id="lgpi-receptions-list"></div>
       </div>
@@ -2676,11 +2676,6 @@ async function confirmValidate(){
   }
   store.bl=store.bl.filter(d=>d.id!==bl.id);
   store.fac=store.fac.filter(d=>d.id!==fac.id);
-  // Mémoriser les odId pour ne pas re-synchroniser ces fichiers
-  if(bl.odId) rejectedIds.add(bl.odId);
-  if(fac.odId) rejectedIds.add(fac.odId);
-  // Marquer la réception LGPI correspondante comme traitée
-  archiveLgpiReception(bl, fac, lastEntry);
   renderDocs();closeModal('validate-overlay');
   computeSuggestions();updatePairSelectors();
   if(_panelPair&&_panelPair.bl.id===bl.id)closePanel();
@@ -2690,42 +2685,6 @@ async function confirmValidate(){
   await saveAll();
   toast('💾 Historique sauvegardé sur OneDrive','info');
 }
-
-// Marque la réception LGPI correspondante comme traitée après validation
-function archiveLgpiReception(bl, fac, histEntry) {
-  if (!lgpiReceptions.length) return;
-  const fournisseur = normalize((bl||fac)?.fields?.fournisseur || '');
-  const montantHT = parseFloat((fac||bl)?.fields?.montantHT || '0');
-  const lgoNum = histEntry?.lgoNumeroBL || bl?.lgoNumeroBL || '';
-
-  // Chercher par numéro BL LGPI en premier (le plus fiable)
-  let idx = -1;
-  if (lgoNum) {
-    idx = lgpiReceptions.findIndex(r => r.numero === lgoNum);
-  }
-  // Sinon chercher par fournisseur + montant
-  if (idx === -1 && fournisseur) {
-    idx = lgpiReceptions.findIndex(r => {
-      const rFou = normalize(r.fournisseur || '');
-      const rMnt = parseFloat(r.montantHT || '0');
-      const fouMatch = rFou && (rFou.includes(fournisseur.split(' ')[0]) || fournisseur.includes(rFou.split(' ')[0]));
-      const mntMatch = montantHT > 0 && Math.abs(rMnt - montantHT) <= 1.0;
-      return fouMatch && mntMatch;
-    });
-  }
-  if (idx === -1) return;
-
-  // Marquer comme traitée (archivée) sans supprimer — visible dans l'historique LGPI
-  lgpiReceptions[idx] = {
-    ...lgpiReceptions[idx],
-    traitee: true,
-    dateTraitement: new Date().toLocaleDateString('fr-FR'),
-    blName: bl?.name || '',
-    facName: fac?.name || ''
-  };
-  renderLgpiPage();
-}
-
 function addToHistoryLocal(bl,fac,statut){const allE=new Map();bl.eans.forEach(e=>allE.set(e.ean,{qteBL:e.qte,qteFAC:null}));fac.eans.forEach(e=>{if(allE.has(e.ean))allE.get(e.ean).qteFAC=e.qte;else allE.set(e.ean,{qteBL:null,qteFAC:e.qte});});const rows=[...allE.values()];history.push({blId:bl.id,facId:fac.id,blOdId:bl.odId,facOdId:fac.odId,blName:bl.name,facName:fac.name,fournisseur:bl.fields.fournisseur||fac.fields.fournisseur||'—',montantFac:fac.fields.montantHT||'—',date:new Date().toLocaleDateString('fr-FR'),statut,totalEan:rows.length,nbOk:rows.filter(r=>r.qteBL!==null&&r.qteFAC!==null&&r.qteBL===r.qteFAC).length,nbEcart:rows.filter(r=>r.qteBL!==null&&r.qteFAC!==null&&r.qteBL!==r.qteFAC).length,nbMiss:rows.filter(r=>r.qteBL===null||r.qteFAC===null).length,lgoRecu:false,lgoNumeroBL:'',lgoNumeroCommande:'',lgoDate:''});renderHistory();updateNav();}
 
 // ════ COMPARAISON MANUELLE
@@ -2786,8 +2745,6 @@ async function confirmValidateBLSeul() {
 
   // Retirer le BL du store
   store.bl = store.bl.filter(d => d.id !== blId);
-  if(bl.odId) rejectedIds.add(bl.odId);
-  archiveLgpiReception(bl, null, history[history.length-1]);
   renderDocs();
   closeModal('bl-seul-overlay');
   computeSuggestions();
@@ -2854,8 +2811,6 @@ async function confirmValidateFacSeule() {
 
   // Retirer la facture du store
   store.fac = store.fac.filter(d => d.id !== facId);
-  if(fac.odId) rejectedIds.add(fac.odId);
-  archiveLgpiReception(null, fac, history[history.length-1]);
   renderDocs();
   closeModal('fac-seule-overlay');
   computeSuggestions();
@@ -4003,47 +3958,33 @@ function switchLgpiTab(tab) {
 }
 
 function renderLgpiPage() {
-  const pending = lgpiReceptions.filter(r => !r.traitee);
-  const archived = lgpiReceptions.filter(r => r.traitee);
-  const count = pending.length;
-
-  // Badge nav tab — seulement les en attente
+  const count = lgpiReceptions.length;
+  // Badge nav tab
   const badge = document.getElementById('lgpi-count-badge');
   if (badge) badge.textContent = count;
   // Titre
   const titleEl = document.getElementById('lgpi-table-title');
-  if (titleEl) titleEl.textContent = count + ' en attente' + (archived.length ? ' · ' + archived.length + ' archivée' + (archived.length > 1 ? 's' : '') : '');
+  if (titleEl) titleEl.textContent = count + ' réception' + (count > 1 ? 's' : '') + ' en attente';
   // Afficher/masquer
   const empty = document.getElementById('lgpi-empty');
   const wrap = document.getElementById('lgpi-receptions-wrap');
   if (!empty || !wrap) return;
-  if (!lgpiReceptions.length) { empty.style.display = 'flex'; wrap.style.display = 'none'; return; }
+  if (!count) { empty.style.display = 'flex'; wrap.style.display = 'none'; return; }
   empty.style.display = 'none'; wrap.style.display = 'block';
 
   const list = document.getElementById('lgpi-receptions-list');
-  list.innerHTML = lgpiReceptions.map((r, i) => {
-    const isArchived = !!r.traitee;
-    const rowStyle = isArchived
-      ? 'background:var(--green-light);opacity:0.75'
-      : '';
-    const statusBadge = isArchived
-      ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:var(--green-light);color:var(--green);white-space:nowrap">✅ Archivée</span>`
-      : `<div style="display:flex;gap:4px;justify-content:flex-end">
-           <button class="btn-icon" onclick="editLgpiReception(${i})" title="Modifier" style="font-size:13px;width:28px;height:28px">✏️</button>
-           <button class="btn-icon" onclick="deleteLgpiReception(${i})" title="Supprimer" style="font-size:13px;width:28px;height:28px;border-color:var(--danger);color:var(--danger)">🗑</button>
-         </div>`;
-    const dateInfo = isArchived
-      ? `<div style="font-size:10px;color:var(--green)">${r.dateTraitement||''}</div>`
-      : `<div style="font-size:10px;color:var(--ink2)">${r.imported||'—'}</div>`;
-    return `<div style="display:grid;grid-template-columns:100px 1fr 110px 110px 90px 100px;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;transition:background 0.15s;${rowStyle}">
-      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${isArchived ? 'var(--green)' : 'var(--accent2)'}">${r.numero||'—'}</div>
-      <div style="font-weight:500;${isArchived ? 'color:var(--ink2)' : ''}">${r.fournisseur||'—'}</div>
+  list.innerHTML = lgpiReceptions.map((r, i) => `
+    <div style="display:grid;grid-template-columns:100px 1fr 110px 110px 90px 80px;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;transition:background 0.15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent2)">${r.numero||'—'}</div>
+      <div style="font-weight:500">${r.fournisseur||'—'}</div>
       <div style="font-family:'JetBrains Mono',monospace;font-weight:700;text-align:right">${r.montantHT ? r.montantHT+' €' : '—'}</div>
       <div style="font-family:'JetBrains Mono',monospace;color:var(--ink2)">${r.date||'—'}</div>
-      ${dateInfo}
-      ${statusBadge}
-    </div>`;
-  }).join('');
+      <div style="font-size:10px;color:var(--ink2)">${r.imported||'—'}</div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="btn-icon" onclick="editLgpiReception(${i})" title="Modifier" style="font-size:13px;width:28px;height:28px">✏️</button>
+        <button class="btn-icon" onclick="deleteLgpiReception(${i})" title="Supprimer" style="font-size:13px;width:28px;height:28px;border-color:var(--danger);color:var(--danger)">🗑</button>
+      </div>
+    </div>`).join('');
 }
 
 function deleteLgpiReception(i) {
@@ -4343,14 +4284,30 @@ Règles :
 function renderLgpiValidationTable(rows) {
   const tbody = document.getElementById('lgpi-table-body');
   const today = new Date().toLocaleDateString('fr-FR');
-  let newCount = 0, dupCount = 0;
 
-  tbody.innerHTML = rows.map((row, i) => {
-    const isDup = lgpiReceptions.some(r => r.numero === row.numero);
-    if (isDup) dupCount++; else newCount++;
-    const rowBg = isDup ? 'background:var(--warn-light)' : '';
-    const dupLabel = isDup ? '<span style="font-size:10px;color:var(--warn);font-weight:700">⚠ Déjà présent</span>' : '<span style="font-size:10px;color:var(--green);font-weight:700">✨ Nouveau</span>';
-    return `<tr style="${rowBg};border-bottom:1px solid var(--border)">
+  // Filtrer : exclure les numéros déjà présents et non archivés
+  const dupNums = new Set(lgpiReceptions.filter(r => !r.traitee).map(r => r.numero));
+  const newRows = rows.filter(row => !dupNums.has(row.numero));
+  const skipped = rows.length - newRows.length;
+
+  if (!newRows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--ink2);font-size:13px">
+      Aucun nouveau numéro à importer${skipped ? ' — ' + skipped + ' déjà présent' + (skipped > 1 ? 's' : '') + ' ignoré' + (skipped > 1 ? 's' : '') : ''}.
+    </td></tr>`;
+    document.getElementById('lgpi-new-badge').style.display = 'none';
+    document.getElementById('lgpi-dup-badge').textContent = skipped + ' ignoré' + (skipped > 1 ? 's' : '');
+    document.getElementById('lgpi-dup-badge').style.display = skipped ? '' : 'none';
+    document.getElementById('lgpi-btn-confirm').style.display = 'none';
+    document.getElementById('lgpi-validation-table').dataset.count = 0;
+    document.getElementById('lgpi-step2').style.display = 'block';
+    document.getElementById('lgpi-btn-retry').style.display = '';
+    return;
+  }
+
+  let newCount = newRows.length;
+  tbody.innerHTML = newRows.map((row, i) => {
+    const dupLabel = '<span style="font-size:10px;color:var(--green);font-weight:700">✨ Nouveau</span>';
+    return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px 12px;text-align:center">
         <input type="checkbox" id="lgpi-chk-${i}" ${isDup ? '' : 'checked'} style="width:16px;height:16px;cursor:pointer">
       </td>
@@ -4383,11 +4340,11 @@ function renderLgpiValidationTable(rows) {
   const dupBadge = document.getElementById('lgpi-dup-badge');
   newBadge.textContent = newCount + ' nouveau' + (newCount > 1 ? 'x' : '');
   newBadge.style.display = newCount ? '' : 'none';
-  dupBadge.textContent = dupCount + ' doublon' + (dupCount > 1 ? 's' : '');
-  dupBadge.style.display = dupCount ? '' : 'none';
+  dupBadge.textContent = skipped ? skipped + ' déjà présent' + (skipped > 1 ? 's' : '') + ' ignoré' + (skipped > 1 ? 's' : '') : '';
+  dupBadge.style.display = skipped ? '' : 'none';
 
-  // Store rows count for confirm
-  document.getElementById('lgpi-validation-table').dataset.count = rows.length;
+  // Store rows count for confirm (based on filtered newRows)
+  document.getElementById('lgpi-validation-table').dataset.count = newRows.length;
 
   document.getElementById('lgpi-step2').style.display = 'block';
   document.getElementById('lgpi-btn-confirm').style.display = '';
