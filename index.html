@@ -4319,7 +4319,7 @@ function renderRecPhysPage() {
       <div style="background:${s.bg};padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid ${s.border}">
         <span style="font-size:20px">${s.icon}</span>
         <div>
-          <div style="font-size:14px;font-weight:700">${r.transporteur||'<span style="color:var(--ink2);font-style:italic;font-weight:400">Transporteur non renseigné</span>'}${r.labo?' <span style="font-weight:400;color:var(--ink2)">/ '+r.labo+'</span>':''}</div>
+         <div style="font-size:14px;font-weight:700">${r.labo||r.transporteur||'<span style="color:var(--ink2);font-style:italic;font-weight:400">Labo non renseigné</span>'}${r.labo&&r.transporteur?' <span style="font-weight:400;color:var(--ink2)">/ '+r.transporteur+'</span>':''}
           <div style="font-size:11px;color:var(--ink2);display:flex;gap:8px;align-items:center">
             <span>${r.date} à ${r.heure}</span>
             ${r.operateur?'<span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-family:monospace;font-size:10px;font-weight:700">👤 '+r.operateur+'</span>':''}
