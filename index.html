@@ -6288,6 +6288,15 @@ function renderReceptions() {
 // ════ INIT
 async function init(){
   loadStateLocal();
+// Auto-reload si nouvelle version
+const lastVersion = localStorage.getItem('reconcilia-version');
+if (lastVersion && lastVersion !== APP_VERSION) {
+  localStorage.setItem('reconcilia-version', APP_VERSION);
+  toast('🔄 Nouvelle version disponible — rechargement…', 'info');
+  setTimeout(() => window.location.href = window.location.href.split('?')[0] + '?v=' + APP_VERSION, 1500);
+} else {
+  localStorage.setItem('reconcilia-version', APP_VERSION);
+}
   renderDocs();updateNav();updatePairSelectors();updateClassifierStats();renderLgpiPage();renderRecPhysPage();renderSansBLList();
   applyNavTabs();
   renderMobileNav(); // ← nav mobile dynamique
