@@ -1,4 +1,4 @@
-const APP_VERSION = '2.0.' + '20250424';
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2013,6 +2013,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
+const APP_VERSION = '2.0.20250424'; 
 const MSAL_CONFIG={auth:{clientId:'f48939f5-b2fc-4e2e-8fcb-9bd93644799a',authority:'https://login.microsoftonline.com/common',redirectUri:window.location.origin},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}};
 const MSAL_SCOPES=['Files.Read','Files.ReadWrite','User.Read'];
 const OD_BL='/me/drive/root:/ReconcilIA/BL:/children';
@@ -6288,15 +6289,14 @@ function renderReceptions() {
 // ════ INIT
 async function init(){
   loadStateLocal();
-// Auto-reload si nouvelle version
-const lastVersion = localStorage.getItem('reconcilia-version');
-if (lastVersion && lastVersion !== APP_VERSION) {
-  localStorage.setItem('reconcilia-version', APP_VERSION);
-  toast('🔄 Nouvelle version disponible — rechargement…', 'info');
-  setTimeout(() => window.location.href = window.location.href.split('?')[0] + '?v=' + APP_VERSION, 1500);
-} else {
-  localStorage.setItem('reconcilia-version', APP_VERSION);
-}
+  // Auto-reload si nouvelle version
+  const lastVersion = localStorage.getItem('reconcilia-version');
+  if (lastVersion && lastVersion !== APP_VERSION) {
+    localStorage.setItem('reconcilia-version', APP_VERSION);
+    setTimeout(() => window.location.href = window.location.href.split('?')[0] + '?v=' + APP_VERSION, 1500);
+  } else {
+    localStorage.setItem('reconcilia-version', APP_VERSION);
+  }
   renderDocs();updateNav();updatePairSelectors();updateClassifierStats();renderLgpiPage();renderRecPhysPage();renderSansBLList();
   applyNavTabs();
   renderMobileNav(); // ← nav mobile dynamique
