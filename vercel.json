@@ -1,11 +1,19 @@
+Voilà le problème — `notion.js` n'est pas dans les `builds` ni dans les `routes`. Il faut modifier le `vercel.json` pour l'ajouter. Clique sur ✏️ pour éditer directement sur GitHub et remplace le contenu par :
+
+```json
 {
   "version": 2,
   "builds": [
     { "src": "api/claude.js", "use": "@vercel/node" },
+    { "src": "api/notion.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/claude", "dest": "/api/claude.js" },
+    { "src": "/api/notion", "dest": "/api/notion.js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
+```
+
+Sauvegarde → Vercel redéploie → la synchro Notion fonctionnera.
