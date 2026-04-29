@@ -2709,6 +2709,7 @@ const OD_REJECTED_PATH='/me/drive/root:/ReconcilIA/reconcilia-rejected.json:/con
 const OD_STORE_PATH='/me/drive/root:/ReconcilIA/reconcilia-store.json:/content';
 const OD_LGPI_PATH='/me/drive/root:/ReconcilIA/reconcilia-lgpi.json:/content';
 const OD_RECPHYS_PATH='/me/drive/root:/ReconcilIA/reconcilia-recphys.json:/content';
+const OD_NAV_CONFIG_PATH='/me/drive/root:/ReconcilIA/reconcilia-nav-config.json:/content';
 const MODEL='claude-sonnet-4-20250514';
 
 let _msalApp=null,_odToken=null,currentUser=null,pendingValidate=null,pendingAlias=null;
@@ -3415,6 +3416,24 @@ async function loadFromOneDrive() {
         }
       }
     } catch(e) { console.warn('Chargement sell-out OneDrive:', e); }
+    // Charger la config navigation (onglets personnalisés)
+    try {
+      const resNav = await fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{headers:{'Authorization':'Bearer '+token}});
+      if(resNav.ok){
+        const d=await resNav.json();
+        if(d && d.mobileNav && Array.isArray(d.mobileNav)){
+          mobileNavConfig = d.mobileNav;
+          localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+          renderMobileNav();
+          logActivity('📥 Config navigation mobile restaurée','info');
+        }
+        if(d && d.nav && Array.isArray(d.nav)){
+          navTabsConfig = d.nav;
+          localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
+          applyNavTabs();
+        }
+      }
+    } catch(e){}
     // Charger les réceptions LGPI
     try {
       const resLG = await fetch('https://graph.microsoft.com/v1.0'+OD_LGPI_PATH,{headers:{'Authorization':'Bearer '+token}});
@@ -4617,7 +4636,14 @@ function getNavConfig() {
     navTabsConfig=m;return navTabsConfig;} } catch(e){}
   navTabsConfig=NAV_TABS_DEFAULT.map(t=>({...t}));return navTabsConfig;
 }
-function saveNavConfig(){localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));}
+function saveNavConfig(){
+  localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));
+  // Sauvegarder aussi sur OneDrive si connecté
+  if(_odToken && navTabsConfig){
+    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
+    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
+  }
+}
 function applyNavTabs(){
   const cfg=getNavConfig();const container=document.querySelector('.nav-tabs');if(!container)return;
   const existing=[...container.querySelectorAll('.nav-tab')];const buttons=[];
@@ -5665,6 +5691,11 @@ function getMobileNavConfig() {
 
 function saveMobileNavConfig() {
   localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+  // Sauvegarder aussi sur OneDrive si connecté
+  if(_odToken && mobileNavConfig){
+    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
+    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
+  }
 }
 
 function renderMobileNav() {
@@ -5696,7 +5727,13 @@ let _mNavDragSrc = null;
 function toggleMobileNavConfig() {
   const overlay = document.getElementById('mobile-nav-config-overlay');
   overlay.classList.add('open');
-  document.body.style.overflow = 'hidden'; // bloquer scroll arrière-plan
+  document.body.style.overflow = 'hidden';
+  // Forcer les styles bottom-sheet via JS (plus fiable que CSS sur iOS)
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,24,20,0.5);z-index:9998;display:flex;align-items:flex-end;justify-content:center;padding:0';
+  const modal = overlay.querySelector('.modal');
+  if(modal) modal.style.cssText = 'background:var(--surface);width:100%;max-width:100%;border-radius:18px 18px 0 0;height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,0.18)';
+  const list = document.getElementById('mobile-nav-config-list');
+  if(list) list.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:0 16px 8px';
   renderMobileNavConfigList();
 }
 
