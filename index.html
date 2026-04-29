@@ -81,7 +81,7 @@ loadMsal(async () => {
   --panel-width: 780px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; }
+html { overflow-x:hidden; } body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; overflow-x:hidden; }
 nav { position:sticky; top:0; z-index:100; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 28px; height:60px; gap:20px; box-shadow:var(--shadow); }
 .logo { font-size:17px; font-weight:700; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .logo-badge { background:var(--accent); color:#fff; font-size:8px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:-0.3px; font-family:'JetBrains Mono',monospace; }
