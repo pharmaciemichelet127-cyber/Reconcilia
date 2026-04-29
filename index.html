@@ -81,7 +81,7 @@ loadMsal(async () => {
   --panel-width: 780px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-html { overflow-x:hidden; } body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; overflow-x:hidden; }
+body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; }
 nav { position:sticky; top:0; z-index:100; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 28px; height:60px; gap:20px; box-shadow:var(--shadow); }
 .logo { font-size:17px; font-weight:700; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .logo-badge { background:var(--accent); color:#fff; font-size:8px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:-0.3px; font-family:'JetBrains Mono',monospace; }
@@ -269,12 +269,7 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes spinA { to{transform:rotate(360deg);} }
 .overlay { position:fixed; inset:0; background:rgba(26,24,20,0.5); backdrop-filter:blur(8px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
 .overlay.open { display:flex; }
-
 .modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
-#mobile-nav-config-overlay { position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; display:none; flex-direction:column !important; justify-content:flex-end !important; align-items:stretch !important; padding:0 !important; margin:0 !important; }
-#mobile-nav-config-overlay.open { display:flex !important; }
-#mobile-nav-config-overlay .modal { width:100% !important; max-width:100% !important; height:65vh !important; max-height:65vh !important; min-height:0 !important; border-radius:18px 18px 0 0 !important; margin:0 !important; overflow:hidden !important; display:flex !important; flex-direction:column !important; box-sizing:border-box !important; animation:none !important; }
-#mobile-nav-config-list { flex:1 !important; min-height:0 !important; overflow-y:scroll !important; -webkit-overflow-scrolling:touch !important; overscroll-behavior:contain !important; }
 @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);} }
 .modal-head { padding:22px 26px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .modal-title { font-size:18px; font-weight:700; }
@@ -2670,16 +2665,18 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 </div>
 
 <!-- Modal config nav mobile -->
-<div class="side-panel" id="mobile-nav-config-panel">
-  <div class="side-panel-header">
-    <div class="side-panel-title">⚙️ Organiser les onglets</div>
-    <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
-  </div>
-  <div style="font-size:11px;color:var(--ink2);padding:8px 20px 4px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
-  <div id="mobile-nav-config-list" class="side-panel-body" style="display:flex;flex-direction:column;gap:4px;padding:12px 16px"></div>
-  <div class="side-panel-footer">
-    <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
-    <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
+<div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998;align-items:flex-end;padding:0">
+  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;height:80vh;overflow:hidden">
+    <div class="modal-head" style="padding:16px 20px 14px;flex-shrink:0">
+      <div class="modal-title" style="font-size:16px">⚙️ Organiser les onglets</div>
+      <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
+    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;touch-action:pan-y"></div>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
+      <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
+      <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
+    </div>
   </div>
 </div>
 
@@ -2709,7 +2706,6 @@ const OD_REJECTED_PATH='/me/drive/root:/ReconcilIA/reconcilia-rejected.json:/con
 const OD_STORE_PATH='/me/drive/root:/ReconcilIA/reconcilia-store.json:/content';
 const OD_LGPI_PATH='/me/drive/root:/ReconcilIA/reconcilia-lgpi.json:/content';
 const OD_RECPHYS_PATH='/me/drive/root:/ReconcilIA/reconcilia-recphys.json:/content';
-const OD_NAV_CONFIG_PATH='/me/drive/root:/ReconcilIA/reconcilia-nav-config.json:/content';
 const MODEL='claude-sonnet-4-20250514';
 
 let _msalApp=null,_odToken=null,currentUser=null,pendingValidate=null,pendingAlias=null;
@@ -2803,20 +2799,7 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-async function signOut(){
-  try {
-    if(navTabsConfig) localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
-    if(mobileNavConfig) localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
-  } catch(e){}
-  try{
-    const app=getMsalApp();
-    const accounts=app.getAllAccounts();
-    if(accounts.length){
-      await app.logoutPopup({account:accounts[0]});
-    }
-  }catch(e){}
-  currentUser=null;_odToken=null;updateAuthUI(false);
-}
+async function signOut(){try{const app=getMsalApp();await app.logoutRedirect();}catch(e){}currentUser=null;_odToken=null;updateAuthUI(false);}
 async function getToken(){
   const app=getMsalApp();
   const accounts=app.getAllAccounts();
@@ -3416,24 +3399,6 @@ async function loadFromOneDrive() {
         }
       }
     } catch(e) { console.warn('Chargement sell-out OneDrive:', e); }
-    // Charger la config navigation (onglets personnalisés)
-    try {
-      const resNav = await fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{headers:{'Authorization':'Bearer '+token}});
-      if(resNav.ok){
-        const d=await resNav.json();
-        if(d && d.mobileNav && Array.isArray(d.mobileNav)){
-          mobileNavConfig = d.mobileNav;
-          localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
-          renderMobileNav();
-          logActivity('📥 Config navigation mobile restaurée','info');
-        }
-        if(d && d.nav && Array.isArray(d.nav)){
-          navTabsConfig = d.nav;
-          localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
-          applyNavTabs();
-        }
-      }
-    } catch(e){}
     // Charger les réceptions LGPI
     try {
       const resLG = await fetch('https://graph.microsoft.com/v1.0'+OD_LGPI_PATH,{headers:{'Authorization':'Bearer '+token}});
@@ -4636,14 +4601,7 @@ function getNavConfig() {
     navTabsConfig=m;return navTabsConfig;} } catch(e){}
   navTabsConfig=NAV_TABS_DEFAULT.map(t=>({...t}));return navTabsConfig;
 }
-function saveNavConfig(){
-  localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));
-  // Sauvegarder aussi sur OneDrive si connecté
-  if(_odToken && navTabsConfig){
-    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
-    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
-  }
-}
+function saveNavConfig(){localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));}
 function applyNavTabs(){
   const cfg=getNavConfig();const container=document.querySelector('.nav-tabs');if(!container)return;
   const existing=[...container.querySelectorAll('.nav-tab')];const buttons=[];
@@ -5691,11 +5649,6 @@ function getMobileNavConfig() {
 
 function saveMobileNavConfig() {
   localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
-  // Sauvegarder aussi sur OneDrive si connecté
-  if(_odToken && mobileNavConfig){
-    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
-    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
-  }
 }
 
 function renderMobileNav() {
@@ -5725,12 +5678,15 @@ let _mNavDragSrc = null;
 
 
 function toggleMobileNavConfig() {
-  document.getElementById('mobile-nav-config-panel').classList.add('open');
+  const overlay = document.getElementById('mobile-nav-config-overlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden'; // bloquer scroll arrière-plan
   renderMobileNavConfigList();
 }
 
 function closeMobileNavConfig() {
-  document.getElementById('mobile-nav-config-panel').classList.remove('open');
+  document.getElementById('mobile-nav-config-overlay').classList.remove('open');
+  document.body.style.overflow = ''; // restaurer scroll
 }
 
 function renderMobileNavConfigList() {
