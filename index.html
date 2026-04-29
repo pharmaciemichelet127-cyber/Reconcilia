@@ -2666,13 +2666,13 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <!-- Modal config nav mobile -->
 <div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998;align-items:flex-end;padding:0">
-  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;max-height:85vh;overflow:hidden">
+  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;height:80vh;overflow:hidden">
     <div class="modal-head" style="padding:16px 20px 14px;flex-shrink:0">
       <div class="modal-title" style="font-size:16px">⚙️ Organiser les onglets</div>
       <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
     </div>
-    <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Glissez pour réordonner · Décochez pour masquer</div>
-    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;overflow-y:scroll;-webkit-overflow-scrolling:touch;padding:0 16px;touch-action:pan-y"></div>
+    <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
+    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;touch-action:pan-y"></div>
     <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
       <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
       <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
@@ -5833,7 +5833,7 @@ function applyMobileNavOrder() {
   mobileNavConfig = cfg;
   saveMobileNavConfig();
   renderMobileNav();
-  closeModal('mobile-nav-config-overlay');
+  closeMobileNavConfig();
   toast('✓ Navigation mobile mise à jour', 'success');
 }
 
