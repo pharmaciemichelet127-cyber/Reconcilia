@@ -5761,6 +5761,15 @@ function addTouchDragSupportTo(idPrefix, container, onReorder) {
       // Mode drag actif
       e.preventDefault();
       const y = e.touches[0].clientY;
+
+      // Auto-scroll quand le doigt approche du bord haut/bas de la liste
+      const list = document.getElementById('mobile-nav-config-list');
+      if (list) {
+        const lr = list.getBoundingClientRect();
+        if (y < lr.top + 60) list.scrollTop -= 10;
+        else if (y > lr.bottom - 60) list.scrollTop += 10;
+      }
+
       const target = getItems().find(t => {
         const r = t.getBoundingClientRect();
         return y >= r.top && y <= r.bottom;
