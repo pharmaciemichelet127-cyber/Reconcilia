@@ -5755,19 +5755,19 @@ function addTouchDragSupportTo(idPrefix, container, onReorder) {
           clearTimeout(longPressTimer);
           longPressTimer = null;
         }
-        return; // scroll libre
+        return; // scroll libre — ne pas bloquer ici
       }
 
-      // Mode drag actif
+      // Mode drag actif — on bloque le scroll de page
       e.preventDefault();
       const y = e.touches[0].clientY;
 
-      // Auto-scroll quand le doigt approche du bord haut/bas de la liste
+      // Auto-scroll : scroll la liste si le doigt est proche des bords
       const list = document.getElementById('mobile-nav-config-list');
       if (list) {
         const lr = list.getBoundingClientRect();
-        if (y < lr.top + 60) list.scrollTop -= 10;
-        else if (y > lr.bottom - 60) list.scrollTop += 10;
+        if (y < lr.top + 60) list.scrollTop -= 12;
+        else if (y > lr.bottom - 60) list.scrollTop += 12;
       }
 
       const target = getItems().find(t => {
