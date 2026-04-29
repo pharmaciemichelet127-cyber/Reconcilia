@@ -269,9 +269,6 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes spinA { to{transform:rotate(360deg);} }
 .overlay { position:fixed; inset:0; background:rgba(26,24,20,0.5); backdrop-filter:blur(8px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
 .overlay.open { display:flex; }
-.overlay.bottom-sheet { align-items:flex-end !important; justify-content:flex-end !important; padding:0 !important; }
-.overlay.bottom-sheet .modal { width:100% !important; max-width:100% !important; border-radius:18px 18px 0 0 !important; margin:0 !important; height:80vh !important; max-height:80vh !important; display:flex !important; flex-direction:column !important; overflow:hidden !important; animation:none !important; }
-.bottom-sheet-scroll { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px 8px; }
 .modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
 @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);} }
 .modal-head { padding:22px 26px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
@@ -2668,14 +2665,14 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 </div>
 
 <!-- Modal config nav mobile -->
-<div class="overlay bottom-sheet" id="mobile-nav-config-overlay" style="z-index:9998">
-  <div class="modal">
+<div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998;align-items:flex-end;padding:0">
+  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;height:80vh;overflow:hidden">
     <div class="modal-head" style="padding:16px 20px 14px;flex-shrink:0">
       <div class="modal-title" style="font-size:16px">⚙️ Organiser les onglets</div>
       <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
     </div>
     <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
-    <div id="mobile-nav-config-list" class="bottom-sheet-scroll" style="display:flex;flex-direction:column;gap:4px"></div>
+    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;touch-action:pan-y"></div>
     <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
       <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
       <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
@@ -5713,6 +5710,7 @@ function renderMobileNavConfigList() {
     const [moved] = cfg.splice(fromIdx, 1);
     cfg.splice(toIdx, 0, moved);
     mobileNavConfig = cfg;
+    saveMobileNavConfig();
     renderMobileNavConfigList();
   });
 }
@@ -5828,12 +5826,11 @@ function onMNavDragEnd() {
 }
 
 function applyMobileNavOrder() {
-  const cfg = getMobileNavConfig();
-  cfg.forEach((tab, i) => {
+  if (!mobileNavConfig) getMobileNavConfig();
+  mobileNavConfig.forEach((tab, i) => {
     const chk = document.getElementById('mnctab-'+i);
     if (chk) tab.visible = chk.checked;
   });
-  mobileNavConfig = cfg;
   saveMobileNavConfig();
   renderMobileNav();
   closeMobileNavConfig();
