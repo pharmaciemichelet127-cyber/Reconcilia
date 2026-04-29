@@ -269,6 +269,9 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes spinA { to{transform:rotate(360deg);} }
 .overlay { position:fixed; inset:0; background:rgba(26,24,20,0.5); backdrop-filter:blur(8px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
 .overlay.open { display:flex; }
+#mobile-nav-config-overlay { align-items:flex-end !important; justify-content:center !important; padding:0 !important; }
+#mobile-nav-config-overlay .modal { width:100% !important; max-width:100% !important; border-radius:18px 18px 0 0 !important; margin:0 !important; height:80vh !important; max-height:80vh !important; display:flex !important; flex-direction:column !important; overflow:hidden !important; animation:none !important; }
+#mobile-nav-config-list { flex:1 !important; min-height:0 !important; overflow-y:auto !important; -webkit-overflow-scrolling:touch !important; touch-action:pan-y !important; }
 .modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
 @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);} }
 .modal-head { padding:22px 26px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
@@ -2665,14 +2668,14 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 </div>
 
 <!-- Modal config nav mobile -->
-<div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998;align-items:flex-end;padding:0">
-  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;height:80vh;overflow:hidden">
+<div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998">
+  <div class="modal">
     <div class="modal-head" style="padding:16px 20px 14px;flex-shrink:0">
       <div class="modal-title" style="font-size:16px">⚙️ Organiser les onglets</div>
       <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
     </div>
     <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
-    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;touch-action:pan-y"></div>
+    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;padding:0 16px 8px"></div>
     <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
       <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
       <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
@@ -2799,7 +2802,20 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-async function signOut(){try{const app=getMsalApp();await app.logoutRedirect();}catch(e){}currentUser=null;_odToken=null;updateAuthUI(false);}
+async function signOut(){
+  try {
+    if(navTabsConfig) localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
+    if(mobileNavConfig) localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+  } catch(e){}
+  try{
+    const app=getMsalApp();
+    const accounts=app.getAllAccounts();
+    if(accounts.length){
+      await app.logoutPopup({account:accounts[0]});
+    }
+  }catch(e){}
+  currentUser=null;_odToken=null;updateAuthUI(false);
+}
 async function getToken(){
   const app=getMsalApp();
   const accounts=app.getAllAccounts();
