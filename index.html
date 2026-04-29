@@ -2796,16 +2796,7 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-async function signOut(){
-  // Sauvegarder la config nav avant déconnexion
-  try { if(navTabsConfig) localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig)); } catch(e){}
-  try { if(mobileNavConfig) localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig)); } catch(e){}
-  try{const app=getMsalApp();await app.logoutPopup();}catch(e){
-    // fallback : déconnexion locale seulement sans redirection
-    try{const app=getMsalApp();const accounts=app.getAllAccounts();if(accounts.length)app.clearCache();}catch(e2){}
-  }
-  currentUser=null;_odToken=null;updateAuthUI(false);
-}
+async function signOut(){try{const app=getMsalApp();await app.logoutRedirect();}catch(e){}currentUser=null;_odToken=null;updateAuthUI(false);}
 async function getToken(){
   const app=getMsalApp();
   const accounts=app.getAllAccounts();
@@ -4627,10 +4618,10 @@ function renderNavConfigList(){
   const cfg=getNavConfig();const list=document.getElementById('nav-config-list');if(!list)return;
   list.innerHTML=cfg.map((tab,i)=>`<div id="nci-${i}" draggable="true" ondragstart="onNavDragStart(event,${i})" ondragover="onNavDragOver(event,${i})" ondrop="onNavDrop(event,${i})" ondragend="onNavDragEnd()" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:grab;user-select:none" onmouseover="this.style.background='var(--accent2-light)'" onmouseout="this.style.background='var(--surface2)'"><span style="color:var(--ink2);font-size:16px">⠿</span><input type="checkbox" id="nctab-${i}" ${tab.visible?'checked':''} style="width:15px;height:15px;accent-color:var(--accent2);cursor:pointer"><label for="nctab-${i}" style="font-size:13px;flex:1;cursor:pointer">${tab.label}</label></div>`).join('');
   addTouchDragSupportTo('nci-', document.getElementById('nav-config-list'), (fromIdx, toIdx) => {
-    const c = getNavConfig();
-    const [moved] = c.splice(fromIdx, 1);
-    c.splice(toIdx, 0, moved);
-    navTabsConfig = c;
+    if (!navTabsConfig) getNavConfig();
+    const [moved] = navTabsConfig.splice(fromIdx, 1);
+    navTabsConfig.splice(toIdx, 0, moved);
+    saveNavConfig();
     renderNavConfigList();
   });
 }
@@ -5715,10 +5706,9 @@ function renderMobileNavConfigList() {
 
   // Touch drag support pour mobile
   addTouchDragSupportTo('mnci-', document.getElementById('mobile-nav-config-list'), (fromIdx, toIdx) => {
-    const cfg = getMobileNavConfig();
-    const [moved] = cfg.splice(fromIdx, 1);
-    cfg.splice(toIdx, 0, moved);
-    mobileNavConfig = cfg;
+    if (!mobileNavConfig) getMobileNavConfig();
+    const [moved] = mobileNavConfig.splice(fromIdx, 1);
+    mobileNavConfig.splice(toIdx, 0, moved);
     saveMobileNavConfig();
     renderMobileNavConfigList();
   });
