@@ -81,7 +81,7 @@ loadMsal(async () => {
   --panel-width: 780px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; }
+html { overflow-x:hidden; } body { background:var(--bg); color:var(--ink); font-family:'Familjen Grotesk',sans-serif; min-height:100vh; overflow-x:hidden; }
 nav { position:sticky; top:0; z-index:100; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 28px; height:60px; gap:20px; box-shadow:var(--shadow); }
 .logo { font-size:17px; font-weight:700; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .logo-badge { background:var(--accent); color:#fff; font-size:8px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:-0.3px; font-family:'JetBrains Mono',monospace; }
@@ -269,7 +269,12 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes spinA { to{transform:rotate(360deg);} }
 .overlay { position:fixed; inset:0; background:rgba(26,24,20,0.5); backdrop-filter:blur(8px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
 .overlay.open { display:flex; }
+
 .modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
+#mobile-nav-config-overlay { position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; display:none; flex-direction:column !important; justify-content:flex-end !important; align-items:stretch !important; padding:0 !important; margin:0 !important; }
+#mobile-nav-config-overlay.open { display:flex !important; }
+#mobile-nav-config-overlay .modal { width:100% !important; max-width:100% !important; height:65vh !important; max-height:65vh !important; min-height:0 !important; border-radius:18px 18px 0 0 !important; margin:0 !important; overflow:hidden !important; display:flex !important; flex-direction:column !important; box-sizing:border-box !important; animation:none !important; }
+#mobile-nav-config-list { flex:1 !important; min-height:0 !important; overflow-y:scroll !important; -webkit-overflow-scrolling:touch !important; overscroll-behavior:contain !important; }
 @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);} }
 .modal-head { padding:22px 26px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .modal-title { font-size:18px; font-weight:700; }
@@ -2665,18 +2670,16 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 </div>
 
 <!-- Modal config nav mobile -->
-<div class="overlay" id="mobile-nav-config-overlay" style="z-index:9998;align-items:flex-end;padding:0">
-  <div class="modal" style="max-width:100%;width:100%;border-radius:18px 18px 0 0;margin:0;display:flex;flex-direction:column;height:80vh;overflow:hidden">
-    <div class="modal-head" style="padding:16px 20px 14px;flex-shrink:0">
-      <div class="modal-title" style="font-size:16px">⚙️ Organiser les onglets</div>
-      <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
-    </div>
-    <div style="font-size:11px;color:var(--ink2);padding:0 16px 8px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
-    <div id="mobile-nav-config-list" style="display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px;touch-action:pan-y"></div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
-      <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
-      <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
-    </div>
+<div class="side-panel" id="mobile-nav-config-panel">
+  <div class="side-panel-header">
+    <div class="side-panel-title">⚙️ Organiser les onglets</div>
+    <button class="modal-close" onclick="closeMobileNavConfig()">✕</button>
+  </div>
+  <div style="font-size:11px;color:var(--ink2);padding:8px 20px 4px;flex-shrink:0">Maintenez appuyé pour déplacer · Décochez pour masquer</div>
+  <div id="mobile-nav-config-list" class="side-panel-body" style="display:flex;flex-direction:column;gap:4px;padding:12px 16px"></div>
+  <div class="side-panel-footer">
+    <button class="btn btn-secondary btn-sm" onclick="resetMobileNavOrder()">↩ Réinitialiser</button>
+    <button class="btn btn-blue btn-sm" onclick="applyMobileNavOrder()">✓ Appliquer</button>
   </div>
 </div>
 
@@ -2689,6 +2692,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el) el.textContent = 'v' + APP_VERSION;
   _mergeNewNavTabs();
   applyNavTabs();
+  // Forcer l'ordre mobile si config ancienne
+  localStorage.removeItem('reconcilia-mobile-nav-config');
+  mobileNavConfig = null;
   renderMobileNav();
 }); 
 const FICHES_LABO_DATA = [{"nom": "ANATONIC", "franco": "3 paires ou 70 €", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "ARKOPHARMA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "AVENE", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BAUSCH LOMB", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BAYER", "franco": "72 unités", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BIOSYNEX", "franco": "", "contact": "Timothé CHUSIT — Délégué Pharmaceutique", "delai": "", "email": "timothe.chusit@biosynex.com", "notes": "Coordonnées relevées sur carte de visite.", "site": "https://www.biosynex.com", "tel": "+33 7 86 67 61 14", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BOIRON", "franco": "24 unités", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "COOPER RESEAU SANTE", "franco": "", "contact": "Frédéric GIUSTI", "delai": "60 J", "email": "frederic.giusti@cooperconsumerhealth.com", "notes": "Email service client (commande/facturation) : mailto:serviceclient@cooperconsumerhealth.com", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": "0603034195"}, {"nom": "DOCTEUR B", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EFFIK", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EG", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EXPANSCIENCE", "franco": "250 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "GALLIA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "GIBAUD", "franco": "1 boîte", "contact": "Audrey PELLISSIER", "delai": "", "email": "audrey.pellissier@innothera.com", "notes": "Service relation client : 0 800 400 067 (service & appel gratuits)\nEmail commandes : mailto:commandes@innothera.com\nFax : 01 46 15 28 32\nTélétransmission par Pharmaml : contacter le 0 800 400 067", "site": "https://www.easydeli.com", "tel": "0 800 400 067", "marques": "", "logistique": "", "numClient": "", "portable": "+33 6 81 49 46 60"}, {"nom": "GILBERT", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "HORUS PHARMA", "franco": "", "contact": "Anne-Laure CLEMENT", "delai": "", "email": "anne-laure.clement@horus-pharma.com", "notes": "Adresse : 22, allée Camille MUFFAT, INEDI 5, 06200 Nice\nFax : 04 93 19 54 09", "site": "https://www.horus-pharma.com", "tel": "04 93 19 33 75", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IBSA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IDC PHARMA", "franco": "150 € HT", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IDES PHARMA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "Algostéril, Braun, Brothier, Béaba, Calypol, Celostim, Clevorox, Coalgan, Coolcaps, Coquelusedal, Dr Herma, Elerte, Jolly Jatel, KAZ, Movicol, MyVariations, Nausicalm, Nociceptol, Norgine, OTC Medical, Oystershell, Panda Tea, Pistasl, Polidis, Rhinotrophyl, Schmidt's, Spasmine, Taldo, Techni-Pharma, Transillium, Vicks, Zecto, Zeiss", "logistique": "Réseau : IDES PHARMA\nLogisticiens repérés : ALLOGA, EURODEP, LAPHAL", "numClient": "", "portable": ""}, {"nom": "IDIM PHARMA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "3M - Nexcare, Aquatabs, Ascensia, Beesline, BioGaia, ColdHot, Corman, Cottony, Delabarre, Demak'Up, Essity, Everlab, Fingertop, Futuro, Hero, LAPSA, Leurquin, Lotus, Manouka, Organyc, Replens, Ristabil, Sea-Band, Sofibel, Sovedis, Stérimar, TheBreathCo, Waterpik", "logistique": "Réseau : IDM PHARMA\nLogisticiens repérés : ALLOGA, CSE Global, EURODEP, MOVIANTO", "numClient": "", "portable": ""}, {"nom": "KENVUE", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "LA ROCHE POSAY", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "LOHMAN RAUSCHER", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MAJORELLE", "franco": "175 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MARQUE VERTE", "franco": "150 € ou 300 € net", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MY VARIATIONS", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "OPELLA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PERRIGO", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PODOWELL", "franco": "1 paire", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PROCTER & GAMBLE", "franco": "300 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PURESSENTIEL", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "TEVA", "franco": "1 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "THEA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "THERA°PEARL", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "URGO", "franco": "", "contact": "ROLLAND Thomas", "delai": "60 J", "email": "trolland@urgo.fr", "notes": "", "site": "", "tel": "03 80 44 71 21", "marques": "", "logistique": "Délai de règlement : 60 jours date de facture.\nFax : 03 80 44 70 02.\nDéléguée : Pascale Soulinac – 06 35 51 89 85.\nCommande urgente : mailto:aurelie.rousseau@fr.urgo.com", "numClient": "133067", "portable": "06 88 20 81 39"}];
@@ -2706,6 +2712,7 @@ const OD_REJECTED_PATH='/me/drive/root:/ReconcilIA/reconcilia-rejected.json:/con
 const OD_STORE_PATH='/me/drive/root:/ReconcilIA/reconcilia-store.json:/content';
 const OD_LGPI_PATH='/me/drive/root:/ReconcilIA/reconcilia-lgpi.json:/content';
 const OD_RECPHYS_PATH='/me/drive/root:/ReconcilIA/reconcilia-recphys.json:/content';
+const OD_NAV_CONFIG_PATH='/me/drive/root:/ReconcilIA/reconcilia-nav-config.json:/content';
 const MODEL='claude-sonnet-4-20250514';
 
 let _msalApp=null,_odToken=null,currentUser=null,pendingValidate=null,pendingAlias=null;
@@ -2799,7 +2806,20 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-async function signOut(){try{const app=getMsalApp();await app.logoutRedirect();}catch(e){}currentUser=null;_odToken=null;updateAuthUI(false);}
+async function signOut(){
+  try {
+    if(navTabsConfig) localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
+    if(mobileNavConfig) localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+  } catch(e){}
+  try{
+    const app=getMsalApp();
+    const accounts=app.getAllAccounts();
+    if(accounts.length){
+      await app.logoutPopup({account:accounts[0]});
+    }
+  }catch(e){}
+  currentUser=null;_odToken=null;updateAuthUI(false);
+}
 async function getToken(){
   const app=getMsalApp();
   const accounts=app.getAllAccounts();
@@ -3399,6 +3419,24 @@ async function loadFromOneDrive() {
         }
       }
     } catch(e) { console.warn('Chargement sell-out OneDrive:', e); }
+    // Charger la config navigation (onglets personnalisés)
+    try {
+      const resNav = await fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{headers:{'Authorization':'Bearer '+token}});
+      if(resNav.ok){
+        const d=await resNav.json();
+        if(d && d.mobileNav && Array.isArray(d.mobileNav)){
+          mobileNavConfig = d.mobileNav;
+          localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+          renderMobileNav();
+          logActivity('📥 Config navigation mobile restaurée','info');
+        }
+        if(d && d.nav && Array.isArray(d.nav)){
+          navTabsConfig = d.nav;
+          localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig));
+          applyNavTabs();
+        }
+      }
+    } catch(e){}
     // Charger les réceptions LGPI
     try {
       const resLG = await fetch('https://graph.microsoft.com/v1.0'+OD_LGPI_PATH,{headers:{'Authorization':'Bearer '+token}});
@@ -4601,7 +4639,14 @@ function getNavConfig() {
     navTabsConfig=m;return navTabsConfig;} } catch(e){}
   navTabsConfig=NAV_TABS_DEFAULT.map(t=>({...t}));return navTabsConfig;
 }
-function saveNavConfig(){localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));}
+function saveNavConfig(){
+  localStorage.setItem('reconcilia-nav-config',JSON.stringify(navTabsConfig));
+  // Sauvegarder aussi sur OneDrive si connecté
+  if(_odToken && navTabsConfig){
+    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
+    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
+  }
+}
 function applyNavTabs(){
   const cfg=getNavConfig();const container=document.querySelector('.nav-tabs');if(!container)return;
   const existing=[...container.querySelectorAll('.nav-tab')];const buttons=[];
@@ -5604,21 +5649,23 @@ function setMobileNav(btn){document.querySelectorAll('.mobile-nav-btn').forEach(
 
 // ════ CONFIG NAV MOBILE
 const MOBILE_NAV_ALL = [
-  {id:'receptions-physiques', icon:'📦', label:'Livraisons', badgeId:'mnav-badge-recphys'},
-  {id:'stockage',             icon:'🗄',  label:'BL-Fac.',    badgeId:'mnav-badge-stockage'},
-  {id:'lgpi',                 icon:'🏥',  label:'LGPI',       badgeId:'mnav-badge-lgpi-mob'},
-  {id:'receptions',           icon:'💊',  label:'Fin.',       badgeId:'mnav-badge-receptions'},
-  {id:'historique',           icon:'📋',  label:'Hist.',      badgeId:null},
-  {id:'compare',              icon:'🔗',  label:'Comp.',      badgeId:null},
-  {id:'recherche-ean',        icon:'🔎',  label:'EAN',        badgeId:null},
-  {id:'classifier',           icon:'🤖',  label:'Classif.',   badgeId:'mnav-badge-classifier'},
-  {id:'suggestions',          icon:'✨',  label:'Suggest.',   badgeId:null},
-  {id:'suivi',                icon:'📊',  label:'Suivi',      badgeId:null},
-  {id:'commandes',            icon:'🛒',  label:'Cdes',       badgeId:'mnav-badge-commandes'},
-  {id:'codes',                icon:'🔑',  label:'Codes',      badgeId:null},
-  {id:'recherche',            icon:'🔍',  label:'Rech.BL',    badgeId:null},
-  {id:'labo',                 icon:'🔬',  label:'Par Labo',   badgeId:null},
-  {id:'rapport',              icon:'📊',  label:'Rapport',    badgeId:null},
+  {id:'receptions-physiques', icon:'📦', label:'Livraisons',           badgeId:'mnav-badge-recphys'},
+  {id:'stockage',             icon:'🗄',  label:'BL-Fac.',              badgeId:'mnav-badge-stockage'},
+  {id:'lgpi',                 icon:'🏥',  label:'LGPI',                 badgeId:'mnav-badge-lgpi-mob'},
+  {id:'classifier',           icon:'🤖',  label:'Classif.',             badgeId:'mnav-badge-classifier'},
+  {id:'commandes',            icon:'🛒',  label:'Cdes',                 badgeId:'mnav-badge-commandes'},
+  {id:'recherche',            icon:'🔍',  label:'Rech.BL',              badgeId:null},
+  {id:'recherche-ean',        icon:'🔎',  label:'EAN',                  badgeId:null},
+  {id:'receptions',           icon:'💊',  label:'Fin.',                 badgeId:'mnav-badge-receptions'},
+  {id:'compare',              icon:'🔗',  label:'Comp.',                badgeId:null},
+  {id:'historique',           icon:'📋',  label:'Hist.',                badgeId:null},
+  {id:'suggestions',          icon:'✨',  label:'Suggest.',             badgeId:null},
+  {id:'suivi',                icon:'📊',  label:'Suivi',                badgeId:null},
+  {id:'codes',                icon:'🔑',  label:'Codes',                badgeId:null},
+  {id:'labo',                 icon:'🔬',  label:'Par Labo',             badgeId:null},
+  {id:'rapport',              icon:'📊',  label:'Rapport',              badgeId:null},
+  {id:'echeances',            icon:'💰',  label:'Échéances',            badgeId:null},
+  {id:'fiches-labo',          icon:'🏭',  label:'Fiches labo',          badgeId:null},
 ];
 
 // Config par défaut : 8 premiers onglets visibles
@@ -5649,6 +5696,11 @@ function getMobileNavConfig() {
 
 function saveMobileNavConfig() {
   localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig));
+  // Sauvegarder aussi sur OneDrive si connecté
+  if(_odToken && mobileNavConfig){
+    const payload = {nav: navTabsConfig, mobileNav: mobileNavConfig};
+    fetch('https://graph.microsoft.com/v1.0'+OD_NAV_CONFIG_PATH,{method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
+  }
 }
 
 function renderMobileNav() {
@@ -5678,15 +5730,12 @@ let _mNavDragSrc = null;
 
 
 function toggleMobileNavConfig() {
-  const overlay = document.getElementById('mobile-nav-config-overlay');
-  overlay.classList.add('open');
-  document.body.style.overflow = 'hidden'; // bloquer scroll arrière-plan
+  document.getElementById('mobile-nav-config-panel').classList.add('open');
   renderMobileNavConfigList();
 }
 
 function closeMobileNavConfig() {
-  document.getElementById('mobile-nav-config-overlay').classList.remove('open');
-  document.body.style.overflow = ''; // restaurer scroll
+  document.getElementById('mobile-nav-config-panel').classList.remove('open');
 }
 
 function renderMobileNavConfigList() {
