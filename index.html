@@ -269,7 +269,7 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes spinA { to{transform:rotate(360deg);} }
 .overlay { position:fixed; inset:0; background:rgba(26,24,20,0.5); backdrop-filter:blur(8px); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
 .overlay.open { display:flex; }
-.modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:var(--shadow-lg); animation:modalIn 0.22s ease; }
 @keyframes modalIn { from{opacity:0;transform:scale(0.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);} }
 .modal-head { padding:22px 26px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .modal-title { font-size:18px; font-weight:700; }
@@ -5716,6 +5716,10 @@ function addTouchDragSupportTo(idPrefix, container, onReorder) {
   let startX = 0, startY = 0;
   const MOVE_THRESHOLD = 8; // pixels — si bougé de plus de 8px avant 400ms, c'est un scroll
 
+  // Scroll libre par défaut
+  container.style.touchAction = 'pan-y';
+  container.style.overflowY = 'auto';
+
   function getItems() { return [...container.querySelectorAll(':scope > div')]; }
   function getIdx(el) {
     const n = parseInt((el.id || '').replace(idPrefix, ''));
@@ -5728,6 +5732,7 @@ function addTouchDragSupportTo(idPrefix, container, onReorder) {
       getItems().forEach(d => { d.style.opacity = '1'; d.style.transform = ''; d.style.boxShadow = ''; });
       isDragging = false;
       touchSrc = null;
+      container.style.touchAction = 'pan-y'; // restaurer scroll
     }
   }
 
@@ -5741,6 +5746,7 @@ function addTouchDragSupportTo(idPrefix, container, onReorder) {
         el.style.opacity = '0.6';
         el.style.transform = 'scale(1.04)';
         el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+        container.style.touchAction = 'none'; // bloquer scroll pendant drag
         if (navigator.vibrate) navigator.vibrate(40);
       }, 450);
     }, {passive: true});
