@@ -2796,7 +2796,16 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 
-async function signOut(){try{const app=getMsalApp();await app.logoutRedirect();}catch(e){}currentUser=null;_odToken=null;updateAuthUI(false);}
+async function signOut(){
+  // Sauvegarder la config nav avant déconnexion
+  try { if(navTabsConfig) localStorage.setItem('reconcilia-nav-config', JSON.stringify(navTabsConfig)); } catch(e){}
+  try { if(mobileNavConfig) localStorage.setItem('reconcilia-mobile-nav-config', JSON.stringify(mobileNavConfig)); } catch(e){}
+  try{const app=getMsalApp();await app.logoutPopup();}catch(e){
+    // fallback : déconnexion locale seulement sans redirection
+    try{const app=getMsalApp();const accounts=app.getAllAccounts();if(accounts.length)app.clearCache();}catch(e2){}
+  }
+  currentUser=null;_odToken=null;updateAuthUI(false);
+}
 async function getToken(){
   const app=getMsalApp();
   const accounts=app.getAllAccounts();
