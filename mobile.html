@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ReconcilIA">
 <meta name="theme-color" content="#c8410a">
-<title>ReconcilIA Mobile v2.2</title>
+<title>ReconcilIA Mobile v2.3</title>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 function loadMsal(callback) {
@@ -1074,6 +1074,7 @@ let _recTab = 'rapide';
 
 function setRecTab(tab) {
   _recTab = tab;
+  // Afficher/cacher les tabs D'ABORD
   document.getElementById('rec-tab-rapide').style.display  = tab === 'rapide'  ? '' : 'none';
   document.getElementById('rec-tab-complet').style.display = tab === 'complet' ? '' : 'none';
   document.getElementById('tab-rapide').style.color        = tab === 'rapide'  ? 'var(--accent)'  : 'var(--ink2)';
@@ -1081,11 +1082,10 @@ function setRecTab(tab) {
   document.getElementById('tab-rapide').style.borderBottomColor  = tab === 'rapide'  ? 'var(--accent)' : 'transparent';
   document.getElementById('tab-complet').style.borderBottomColor = tab === 'complet' ? 'var(--accent)' : 'transparent';
   document.getElementById('btn-save-rec').textContent = tab === 'rapide' ? '⚡ Enregistrer' : '✅ Valider';
+  // ENSUITE render (l'élément pages-detail-list est maintenant visible)
   if (tab === 'complet') {
-    // S'assurer que chaque photo a au moins une ligne labo
     _photos.forEach(p => { if (!p.labos || !p.labos.length) p.labos = [{labo:'', recus:1}]; });
     renderPagesDetail();
-    // Sync opérateur depuis rapide
     const opR = document.getElementById('rec-operateur')?.value;
     const opC = document.getElementById('rec-operateur-complet');
     if (opC && opR) opC.value = opR;
