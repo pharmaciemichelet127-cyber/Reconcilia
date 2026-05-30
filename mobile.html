@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ReconcilIA">
+<meta name="theme-color" content="#c8410a">
+<title>ReconcilIA Mobile v2.3</title>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+function loadMsal(callback) {
+  if (window.msal) { callback(); return; }
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js',
+    'https://unpkg.com/@azure/msal-browser@3.27.0/lib/msal-browser.min.js',
+    'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js'
+  ];
+  let idx = 0;
+  function tryNext() {
+    if (idx >= urls.length) return;
+    const s = document.createElement('script');
+    s.src = urls[idx++]; s.onload = callback; s.onerror = tryNext;
+    document.head.appendChild(s);
+  }
+  tryNext();
+}
+loadMsal(async () => {
+  await new Promise(r => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', r) : r());
+  try {
+    const app = new window.msal.PublicClientApplication(MSAL_CONFIG);
+    await app.initialize();
+    _msalApp = app;
+    const result = await app.handleRedirectPromise();
+    if (result?.account) {
+      currentUser = result.account;
+      await onConnected();
+    } else {
+      const accounts = app.getAllAccounts();
+      if (accounts.length) { currentUser = accounts[0]; await onConnected(); }
+      else updateAuthUI(false);
+    }
+  } catch(e) { console.warn('MSAL:', e); updateAuthUI(false); }
+});
+</script>
+<style>
+:root {
+  --bg: #f5f3ee; --surface: #fff; --surface2: #f0ede6;
+  --border: #e2ddd4; --ink: #1a1814; --ink2: #6b6560;
+  --accent: #c8410a; --accent-light: #fdf0eb;
+  --accent2: #2563b0; --accent2-light: #eef3fb;
+  --green: #1a7a4a; --green-light: #eaf5ee;
+  --warn: #b45309; --warn-light: #fef3e2;
+  --danger: #c0182d; --danger-light: #fdecea;
+  --purple: #7c3aed; --purple-light: #f3f0ff;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: 'Familjen Grotesk', sans-serif; color: var(--ink); }
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100%; }
+#header {
+  background: var(--accent); color: #fff;
+  padding: calc(var(--safe-top) + 14px) 16px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+#header-right { display: flex; align-items: center; gap: 10px; }
+#od-badge {
+  font-size: 11px; font-weight: 700; padding: 4px 10px;
+  border-radius: 20px; border: 1.5px solid rgba(255,255,255,0.5);
+  color: #fff; background: rgba(255,255,255,0.15); cursor: pointer;
+  white-space: nowrap;
+}
+#od-badge.connected { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.8); }
+
+/* ── Pages ── */
+#pages { flex: 1; overflow: hidden; position: relative; }
+.page { position: absolute; inset: 0; overflow-y: auto; display: none; padding-bottom: calc(80px + var(--safe-bottom)); }
+.page.active { display: block; }
+
+/* ── Top Nav ── */
+#top-nav {
+  display: flex; background: var(--surface); border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 10px 4px; cursor: pointer; border: none; background: none;
+  color: var(--ink2); font-family: inherit; transition: color 0.15s; position: relative;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-btn .nav-icon { font-size: 22px; line-height: 1; }
+.nav-btn .nav-label { font-size: 11px; font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+.nav-badge {
+  position: absolute; top: 6px; right: calc(50% - 18px);
+  background: var(--danger); color: #fff; font-size: 10px; font-weight: 700;
+  min-width: 17px; height: 17px; border-radius: 9px; display: none;
+  align-items: center; justify-content: center; padding: 0 4px;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  margin: 0 16px 10px; box-shadow: var(--shadow);
+}
+.card.warn { border-left: 3px solid var(--warn); }
+.card.ok { border-left: 3px solid var(--green); }
+.card.purple { border-left: 3px solid var(--purple); }
+
+/* ── Section headers ── */
+.section-header {
+  padding: 16px 16px 8px;
+  font-size: 11px; font-weight: 700; color: var(--ink2);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.section-count {
+  background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 10px;
+}
+
+/* ── Bouton principal ── */
+.btn-fab {
+  position: fixed; bottom: calc(90px + var(--safe-bottom)); right: 20px;
+  width: 58px; height: 58px; border-radius: 29px;
+  background: var(--accent); color: #fff; font-size: 28px;
+  border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(200,65,10,0.4);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s; z-index: 100;
+}
+.btn-fab:active { transform: scale(0.93); }
+
+/* ── Boutons ── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; border: none; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+.btn:active { opacity: 0.75; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-secondary { background: var(--surface2); color: var(--ink); border: 1px solid var(--border); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-full { width: 100%; justify-content: center; }
+.btn-lg { font-size: 16px; padding: 14px 24px; border-radius: 12px; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 200; display: none; align-items: flex-end;
+}
+.modal-overlay.open { display: flex; }
+.modal-sheet {
+  background: var(--surface); border-radius: 20px 20px 0 0;
+  width: 100%; max-height: 92vh; overflow-y: auto;
+  padding: 0 0 calc(16px + var(--safe-bottom));
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 16px; }
+.modal-title { font-size: 18px; font-weight: 700; padding: 0 20px 16px; border-bottom: 1px solid var(--border); }
+.modal-body { padding: 16px 20px; }
+.modal-footer { padding: 12px 20px 0; display: flex; gap: 10px; }
+
+/* ── Form fields ── */
+.field-label { font-size: 12px; font-weight: 700; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+.field-label.required::after { content: ' *'; color: var(--danger); }
+.field-input {
+  width: 100%; padding: 12px 14px; border-radius: 10px;
+  border: 1.5px solid var(--border); font-family: inherit; font-size: 15px;
+  background: var(--surface); color: var(--ink); outline: none;
+  transition: border-color 0.15s;
+}
+.field-input:focus { border-color: var(--accent2); }
+.field-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+.field-group { margin-bottom: 16px; }
+
+/* ── Stepper colis ── */
+.stepper { display: flex; align-items: center; gap: 0; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; }
+.stepper-btn { width: 44px; height: 44px; border: none; background: var(--surface2); font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.stepper-val { flex: 1; text-align: center; font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+/* ── Photo zone ── */
+.photo-zone {
+  border: 2px dashed var(--border); border-radius: 12px;
+  padding: 20px; text-align: center; cursor: pointer;
+  background: var(--surface2); transition: border-color 0.15s;
+}
+.photo-zone:active { border-color: var(--accent2); background: var(--accent2-light); }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.photo-thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-thumb-del { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* ── Mois header ── */
+.month-header {
+  margin: 16px 16px 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.month-label { font-size: 12px; font-weight: 700; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+.month-stat { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+/* ── BL card ── */
+.bl-card { display: flex; align-items: center; gap: 12px; }
+.bl-icon { font-size: 22px; flex-shrink: 0; }
+.bl-info { flex: 1; min-width: 0; }
+.bl-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-meta { font-size: 11px; color: var(--ink2); margin-top: 2px; }
+.pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; }
+.pill-ok { background: var(--green-light); color: var(--green); }
+.pill-warn { background: var(--warn-light); color: var(--warn); }
+
+/* ── Toast ── */
+#toast-container { position: fixed; bottom: calc(90px + var(--safe-bottom)); left: 16px; right: 16px; z-index: 999; pointer-events: none; }
+.toast-item { background: var(--ink); color: #fff; padding: 12px 16px; border-radius: 12px; margin-top: 8px; font-size: 14px; font-weight: 600; animation: fadeIn 0.2s ease; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+.toast-item.success { background: var(--green); }
+.toast-item.error { background: var(--danger); }
+.toast-item.warn { background: var(--warn); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Autocomplete ── */
+.autocomplete-dd { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); z-index: 50; max-height: 200px; overflow-y: auto; }
+.autocomplete-item { padding: 12px 14px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:active { background: var(--surface2); }
+
+/* ── Connect screen ── */
+#connect-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 40px 24px; text-align: center; }
+.connect-logo { font-size: 64px; margin-bottom: 20px; }
+.connect-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.connect-sub { font-size: 15px; color: var(--ink2); margin-bottom: 32px; line-height: 1.5; }
+
+/* ── Spinner ── */
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Labo row dans modal ── */
+.labo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; position: relative; }
+.labo-row .field-input { flex: 1; }
+.labo-count-wrap { display: flex; align-items: center; gap: 0; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+.labo-count-btn { width: 36px; height: 42px; border: none; background: var(--surface2); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.labo-count-val { width: 36px; text-align: center; font-size: 16px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.labo-del { width: 36px; height: 36px; border: none; background: none; color: var(--danger); font-size: 18px; cursor: pointer; flex-shrink: 0; }
+
+.empty-state { text-align: center; padding: 48px 24px; color: var(--ink2); }
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-text { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.empty-sub { font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <h1>📦 ReconcilIA</h1>
+    <div id="header-right">
+      <div id="sync-indicator" style="font-size:12px;display:none">⏳</div>
+      <div id="od-badge" onclick="signIn()">Non connecté</div>
+    </div>
+  </div>
+
+  <!-- TOP NAV (sous le header) -->
+  <div id="top-nav">
+    <button class="nav-btn active" id="nav-receptions" onclick="showPage('receptions')">
+      <span class="nav-icon">📦</span>
+      <span class="nav-label">Réceptions</span>
+      <span class="nav-badge" id="badge-incomplets"></span>
+    </button>
+    <button class="nav-btn" id="nav-bl" onclick="showPage('bl')">
+      <span class="nav-icon">🚚</span>
+      <span class="nav-label">BL</span>
+      <span class="nav-badge" id="badge-bl"></span>
+    </button>
+  </div>
+  <div id="pages">
+
+    <!-- PAGE RÉCEPTIONS -->
+    <div class="page active" id="page-receptions">
+      <div id="connect-screen-rec" style="display:none">
+        <div class="connect-logo">☁️</div>
+        <div class="connect-title">Connectez-vous</div>
+        <div class="connect-sub">Pour accéder aux réceptions, connectez votre compte OneDrive.</div>
+        <button class="btn btn-primary btn-lg" onclick="signIn()">🔗 Connexion Microsoft</button>
+      </div>
+      <div id="rec-content">
+
+        <!-- Stats -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px 8px">
+          <div style="background:var(--surface);border:1px solid var(--purple);border-radius:12px;padding:10px;text-align:center">
+            <div id="stat-complet" style="font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--purple)">—</div>
+            <div style="font-size:11px;color:var(--ink2);margin-top:2px">📋 À compléter</div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--green);border-radius:12px;padding:10px;text-align:center">
+            <div id="stat-ok" style="font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--green)">—</div>
+            <div style="font-size:11px;color:var(--ink2);margin-top:2px">✅ Terminées</div>
+          </div>
+        </div>
+
+        <!-- Onglets colonnes -->
+        <div style="display:flex;border-bottom:2px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:10">
+          <button class="rec-col-tab active" id="col-tab-complet" onclick="showRecCol('complet')"
+            style="flex:1;padding:12px 4px;border:none;background:none;font-family:inherit;font-size:12px;font-weight:700;color:var(--purple);border-bottom:3px solid var(--purple);margin-bottom:-2px;cursor:pointer">
+            📋 À compléter &nbsp;<span id="col-count-complet" style="background:var(--purple);color:#fff;padding:2px 7px;border-radius:10px;font-size:12px">0</span>
+          </button>
+          <button class="rec-col-tab" id="col-tab-termine" onclick="showRecCol('termine')"
+            style="flex:1;padding:12px 4px;border:none;background:none;font-family:inherit;font-size:12px;font-weight:700;color:var(--ink2);border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer">
+            ✅ Terminées &nbsp;<span id="col-count-termine" style="background:var(--border);color:var(--ink2);padding:2px 7px;border-radius:10px;font-size:12px">0</span>
+          </button>
+        </div>
+
+        <!-- Colonnes -->
+        <div id="col-complet" class="rec-col"></div>
+        <div id="col-termine" class="rec-col" style="display:none"></div>
+
+      </div>
+    </div>
+
+    <!-- PAGE BL -->
+    <div class="page" id="page-bl">
+      <div id="bl-content">
+        <div class="section-header">
+          <span>📦 Bons de Livraison</span>
+          <span class="section-count" id="bl-count">0</span>
+        </div>
+        <div id="bl-list">
+          <div class="empty-state"><div class="spinner"></div><div>Chargement…</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FAB Nouvelle réception (visible sur page réceptions) -->
+  <button class="btn-fab" id="fab-rec" onclick="openNewRecModal()" title="Nouvelle réception">＋</button>
+
+  <!-- FAB Upload BL (visible sur page BL) -->
+  <button class="btn-fab" id="fab-bl" onclick="openBLModal()" title="Ajouter un BL" style="display:none;background:var(--accent2)">＋</button>
+  <input type="file" id="bl-file-input" accept="application/pdf,image/*" style="display:none" onchange="onBLPageAdded(this)">
+
+  <!-- PAGES -->
+
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<!-- MODAL RÉCEPTION -->
+<div class="modal-overlay" id="modal-reception">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-rec-title">📦 Nouvelle réception</div>
+
+    <!-- Tabs Rapide / Complet -->
+    <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:0">
+      <button id="tab-rapide" onclick="setRecTab('rapide')"
+        style="flex:1;padding:12px;border:none;background:none;font-family:inherit;font-size:14px;font-weight:700;color:var(--accent);border-bottom:3px solid var(--accent);margin-bottom:-2px;cursor:pointer">
+        ⚡ Rapide
+      </button>
+      <button id="tab-complet" onclick="setRecTab('complet')"
+        style="flex:1;padding:12px;border:none;background:none;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink2);border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer">
+        📋 Complet
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+
+      <!-- ── MODE RAPIDE ── -->
+      <div id="rec-tab-rapide">
+        <div id="rec-hint-doc" style="background:var(--accent2-light);border:1px solid var(--accent2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--accent2)">
+          💡 Prends en photo chaque page tamponnée. Tu pourras détailler les labos et colis ensuite.
+        </div>
+        <div id="rec-hint-colis" style="display:none;background:var(--warn-light);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--warn)">
+          📦 Pas de document — photographie le ou les colis à la place.
+        </div>
+
+        <!-- Photos -->
+        <div class="field-group">
+          <div class="field-label required" id="photo-label">Photos des bordereaux</div>
+          <div id="photo-grid" class="photo-grid"></div>
+          <div class="photo-zone" onclick="triggerPhoto()">
+            <div style="font-size:28px">📷</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px;color:var(--ink2)" id="photo-zone-text">Photographier une page</div>
+          </div>
+          <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="onPhotoSelected(this)">
+        </div>
+
+        <!-- Opérateur -->
+        <div class="field-group">
+          <div class="field-label required">Opérateur</div>
+          <select class="field-input field-select" id="rec-operateur">
+            <option value="">— Sélectionner —</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+            <option>7</option><option>8</option><option>9</option>
+          </select>
+        </div>
+
+        <!-- Nombre total de colis -->
+        <div class="field-group">
+          <div class="field-label required">Nombre total de colis reçus</div>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="changeRapideColis(-1)">−</button>
+            <div class="stepper-val" id="rapide-colis">1</div>
+            <button class="stepper-btn" onclick="changeRapideColis(1)">+</button>
+          </div>
+        </div>
+
+        <!-- Pas de document -->
+        <div style="background:var(--warn-light);border:1px solid var(--warn);border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center">
+          <input type="checkbox" id="bl-non-recu" style="width:18px;height:18px;flex-shrink:0" onchange="onBlNonRecuChange(this)">
+          <div style="font-size:13px;font-weight:700;color:var(--warn)">📄 Pas de document à tamponner / signer</div>
+        </div>
+      </div>
+
+      <!-- ── MODE COMPLET ── -->
+      <div id="rec-tab-complet" style="display:none">
+        <div style="background:var(--accent2-light);border:1px solid var(--accent2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--accent2)">
+          📋 Pour chaque page photographiée, renseigne le ou les labos et le nombre de colis correspondant.
+        </div>
+
+        <!-- Opérateur mode complet -->
+        <div class="field-group">
+          <div class="field-label required">Opérateur</div>
+          <select class="field-input field-select" id="rec-operateur-complet">
+            <option value="">— Sélectionner —</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+            <option>7</option><option>8</option><option>9</option>
+          </select>
+        </div>
+
+        <!-- Pages avec labos -->
+        <div id="pages-detail-list"></div>
+
+        <!-- Ajouter une photo -->
+        <button class="btn btn-secondary btn-full" onclick="triggerPhotoComplet()" style="margin-bottom:14px">
+          📷 Ajouter une page
+        </button>
+        <input type="file" id="photo-input-complet" accept="image/*" style="display:none" onchange="onPhotoSelectedComplet(this)">
+
+        <!-- Total calculé -->
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-size:13px;font-weight:600;color:var(--ink2)">Total colis</span>
+          <span id="complet-total" style="font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--green)">0</span>
+        </div>
+
+        <!-- Pas de document -->
+        <div style="background:var(--warn-light);border:1px solid var(--warn);border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center">
+          <input type="checkbox" id="bl-non-recu-complet" style="width:18px;height:18px;flex-shrink:0">
+          <div style="font-size:13px;font-weight:700;color:var(--warn)">📄 Pas de document à tamponner / signer</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center" id="btn-save-rec" onclick="saveReception()">
+        ⚡ Enregistrer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL BL MULTI-PAGES -->
+<div class="modal-overlay" id="modal-bl">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🚚 Ajouter un BL</div>
+    <div class="modal-body">
+      <div class="field-group">
+        <div class="field-label">Nom du fichier</div>
+        <input class="field-input" id="bl-nom" placeholder="ex: BL SAGITTA 21-05-2026">
+      </div>
+      <div class="field-group">
+        <div class="field-label">Pages <span id="bl-pages-count" style="color:var(--accent2);font-weight:700">0 page(s)</span></div>
+        <div id="bl-pages-grid" class="photo-grid" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="document.getElementById('bl-file-input').click()">📄 Fichier / PDF</button>
+          <button class="btn btn-secondary" style="flex:1;justify-content:center" onclick="triggerBLCamera()">📷 Photo</button>
+        </div>
+        <input type="file" id="bl-camera-input" accept="image/*" capture="environment" style="display:none" onchange="onBLPageAdded(this)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bl')">Annuler</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center" id="btn-upload-bl" onclick="uploadBLPages()">📤 Uploader</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-delete">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🗑 Supprimer</div>
+    <div class="modal-body">
+      <div id="delete-msg" style="font-size:15px;color:var(--ink2);margin-bottom:16px"></div>
+      <div class="field-group">
+        <div class="field-label">Code de confirmation</div>
+        <input type="password" class="field-input" id="delete-code" placeholder="Entrer le code…" maxlength="10" style="font-family:'JetBrains Mono',monospace;font-size:20px;text-align:center;letter-spacing:4px">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeDeleteModal()">Annuler</button>
+      <button class="btn btn-danger" style="flex:1;justify-content:center" onclick="confirmDelete()">🗑 Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+const MSAL_CONFIG = {
+  auth: {
+    clientId: 'f48939f5-b2fc-4e2e-8fcb-9bd93644799a',
+    authority: 'https://login.microsoftonline.com/common',
+    redirectUri: window.location.origin + window.location.pathname
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+};
+const OD_RECPHYS_PATH = '/me/drive/root:/ReconcilIA/reconcilia-recphys.json:/content';
+const OD_STORE_PATH   = '/me/drive/root:/ReconcilIA/reconcilia-store.json:/content';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const MOIS  = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let _msalApp = null, _token = null, currentUser = null;
+let recPhysList = [];
+let storeBL = [];
+let _photos = []; // [{base64, name}]
+let _deleteTarget = null;
+let _labosKnown = [];
+
+// ══════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════
+async function signIn() {
+  if (!_msalApp) return toast('MSAL non chargé', 'error');
+  try {
+    await _msalApp.loginRedirect({ scopes: ['Files.ReadWrite', 'User.Read'] });
+  } catch(e) { toast('Erreur connexion : ' + e.message, 'error'); }
+}
+
+async function getToken() {
+  if (!_msalApp || !currentUser) throw new Error('Non connecté');
+  try {
+    const r = await _msalApp.acquireTokenSilent({ scopes: ['Files.ReadWrite'], account: currentUser });
+    _token = r.accessToken; return _token;
+  } catch {
+    const r = await _msalApp.acquireTokenPopup({ scopes: ['Files.ReadWrite'] });
+    _token = r.accessToken; return _token;
+  }
+}
+
+function updateAuthUI(connected) {
+  const badge = document.getElementById('od-badge');
+  if (connected && currentUser) {
+    const name = currentUser.name || currentUser.username || '';
+    badge.textContent = '✅ ' + (name.split(' ')[0] || 'Connecté');
+    badge.className = 'connected';
+    badge.onclick = null;
+    document.getElementById('connect-screen-rec')?.style && (document.getElementById('connect-screen-rec').style.display = 'none');
+  } else {
+    badge.textContent = 'Non connecté';
+    badge.className = '';
+    badge.onclick = signIn;
+  }
+}
+
+async function onConnected() {
+  updateAuthUI(true);
+  await loadData();
+  render();
+  initPullToRefresh();
+  startAutoRefresh();
+}
+
+// ══════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════
+async function loadData() {
+  const si = document.getElementById('sync-indicator');
+  if (si) si.style.display = '';
+  try {
+    const token = await getToken();
+    // Charger recphys
+    const r1 = await fetch(GRAPH + OD_RECPHYS_PATH, { headers: { Authorization: 'Bearer ' + token } });
+    if (r1.ok) {
+      const data = await r1.json();
+      recPhysList = Array.isArray(data) ? data : (data.recPhysList || []);
+    }
+    // Charger store BL
+    const r2 = await fetch(GRAPH + OD_STORE_PATH, { headers: { Authorization: 'Bearer ' + token } });
+    if (r2.ok) {
+      const data = await r2.json();
+      storeBL = (data.bl || []);
+      // Extraire labos connus
+      _labosKnown = [...new Set([
+        ...storeBL.map(d => d.fields?.fournisseur),
+        ...recPhysList.flatMap(r => (r.labos||[]).map(l => l.labo)),
+        ...recPhysList.map(r => r.labo)
+      ].filter(Boolean))].sort();
+    }
+  } catch(e) {
+    toast('Erreur sync : ' + e.message, 'error');
+  }
+  if (si) si.style.display = 'none';
+}
+
+async function saveRecPhys() {
+  try {
+    const token = await getToken();
+    const snapshot = recPhysList.map(r => ({ ...r, photoBase64: undefined }));
+    await fetch(GRAPH + OD_RECPHYS_PATH, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(snapshot)
+    });
+  } catch(e) { toast('Erreur sauvegarde : ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id)?.classList.add('active');
+  document.getElementById('nav-' + id)?.classList.add('active');
+  // FAB contextuel
+  document.getElementById('fab-rec').style.display = id === 'receptions' ? '' : 'none';
+  document.getElementById('fab-bl').style.display  = id === 'bl' ? '' : 'none';
+  if (id === 'bl') renderBL();
+}
+
+let _blPages = []; // {base64, name, type}
+
+function openBLModal() {
+  _blPages = [];
+  document.getElementById('bl-nom').value = '';
+  renderBLPages();
+  openModal('modal-bl');
+}
+
+function triggerBLCamera() {
+  document.getElementById('bl-camera-input').click();
+}
+
+function onBLPageAdded(input) {
+  const files = [...input.files];
+  files.forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      _blPages.push({ base64: e.target.result, name: f.name, type: f.type, file: f });
+      renderBLPages();
+    };
+    reader.readAsDataURL(f);
+  });
+  input.value = '';
+}
+
+function renderBLPages() {
+  const grid = document.getElementById('bl-pages-grid');
+  const count = document.getElementById('bl-pages-count');
+  if (count) count.textContent = _blPages.length + ' page(s)';
+  if (!grid) return;
+  grid.innerHTML = _blPages.map((p, i) => {
+    const isImg = p.type?.startsWith('image/');
+    return `<div class="photo-thumb">
+      ${isImg
+        ? `<img src="${p.base64}" style="width:100%;height:100%;object-fit:cover">`
+        : `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface2);gap:4px"><span style="font-size:24px">📄</span><span style="font-size:9px;color:var(--ink2);text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${p.name}</span></div>`}
+      <button class="photo-thumb-del" onclick="_blPages.splice(${i},1);renderBLPages()">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function uploadBLPages() {
+  if (!_blPages.length) { toast('Ajoutez au moins une page', 'error'); return; }
+  if (!_token) { try { await getToken(); } catch(e) { toast('Connectez-vous d\'abord', 'error'); return; } }
+
+  const nom = document.getElementById('bl-nom').value.trim() || ('BL_' + new Date().toLocaleDateString('fr-FR').replace(/\//g,'-'));
+  const btn = document.getElementById('btn-upload-bl');
+  btn.disabled = true; btn.textContent = '⏳ Upload…';
+
+  let ok = 0;
+  if (_blPages.length === 1 && _blPages[0].type === 'application/pdf') {
+    // PDF unique → upload direct
+    try {
+      const safeName = (nom.endsWith('.pdf') ? nom : nom + '.pdf').replace(/[#%]/g, '_');
+      const res = await fetch(`${GRAPH}/me/drive/root:/ReconcilIA/BL/${encodeURIComponent(safeName)}:/content`, {
+        method: 'PUT',
+        headers: { Authorization: 'Bearer ' + _token, 'Content-Type': 'application/pdf' },
+        body: await _blPages[0].file.arrayBuffer()
+      });
+      if (res.ok) ok++;
+    } catch(e) { toast('Erreur upload', 'error'); }
+  } else {
+    // Images ou multi-pages → uploader chaque page séparément avec préfixe
+    for (let i = 0; i < _blPages.length; i++) {
+      const p = _blPages[i];
+      try {
+        const ext = p.type === 'application/pdf' ? 'pdf' : 'jpg';
+        const pageName = _blPages.length === 1 ? nom : `${nom}_page${i+1}`;
+        const safeName = (pageName + '.' + ext).replace(/[#%]/g, '_');
+        const blob = await fetch(p.base64).then(r => r.blob());
+        const res = await fetch(`${GRAPH}/me/drive/root:/ReconcilIA/BL/${encodeURIComponent(safeName)}:/content`, {
+          method: 'PUT',
+          headers: { Authorization: 'Bearer ' + _token, 'Content-Type': p.type || 'image/jpeg' },
+          body: await blob.arrayBuffer()
+        });
+        if (res.ok) ok++;
+        else throw new Error(res.status);
+      } catch(e) { toast(`Erreur page ${i+1}`, 'error'); }
+    }
+  }
+
+  btn.disabled = false; btn.textContent = '📤 Uploader';
+  if (ok > 0) {
+    closeModal('modal-bl');
+    toast(`✅ ${ok} fichier(s) uploadé(s)`, 'success');
+    setTimeout(async () => { await loadData(); renderBL(); }, 2000);
+  }
+}
+
+// ══════════════════════════════════════════════
+// RENDER RÉCEPTIONS
+// ══════════════════════════════════════════════
+let _recColActive = 'complet';
+
+function showRecCol(col) {
+  _recColActive = col;
+  ['complet','termine'].forEach(c => {
+    const tab = document.getElementById('col-tab-'+c);
+    const div = document.getElementById('col-'+c);
+    const isActive = c === col;
+    const color = c==='complet' ? 'var(--purple)' : 'var(--green)';
+    if (tab) {
+      tab.style.color = isActive ? color : 'var(--ink2)';
+      tab.style.borderBottomColor = isActive ? color : 'transparent';
+      const badge = tab.querySelector('span');
+      if (badge) { badge.style.background = isActive ? color : 'var(--border)'; badge.style.color = isActive ? '#fff' : 'var(--ink2)'; }
+    }
+    if (div) div.style.display = isActive ? '' : 'none';
+  });
+}
+
+function render() {
+  const active = recPhysList.filter(r => !r.archived);
+
+  // Une réception est "terminée" si tous les labos sont renseignés sur toutes les pages
+  const isTermine = r => {
+    if (r.statut_mobile === 'termine') return true;
+    if (r.statut_mobile === 'complet' || r.statut_mobile === 'rapide') return false;
+    // Heuristique : a des labos renseignés
+    const hasLabos = (Array.isArray(r.labos) && r.labos.some(l=>l.labo))
+      || r.photos?.some(p=>p.labos?.some(l=>l.labo));
+    return hasLabos && !r.incomplet;
+  };
+
+  const termines   = active.filter(r =>  isTermine(r));
+  const complets   = active.filter(r => !isTermine(r));
+
+  // Stats
+  const _s = (id, val, color) => { const e=document.getElementById(id); if(e){e.textContent=val;if(color)e.style.color=color;} };
+  _s('stat-complet', complets.length, 'var(--purple)');
+  _s('stat-ok',      termines.length, 'var(--green)');
+  _s('col-count-complet', complets.length);
+  _s('col-count-termine', termines.length);
+
+  // Badge nav
+  const badgeIncomplet = document.getElementById('badge-incomplets');
+  if (badgeIncomplet) { badgeIncomplet.style.display = complets.length>0?'flex':'none'; badgeIncomplet.textContent = complets.length; }
+  const badgeBL = document.getElementById('badge-bl');
+  if (badgeBL) { badgeBL.style.display = storeBL.length>0?'flex':'none'; badgeBL.textContent = storeBL.length; }
+
+  // Rendu colonnes
+  renderRecCol('col-complet', complets, '📋 Aucune réception à compléter', 'Super ! Toutes les réceptions sont terminées.');
+  renderRecCol('col-termine', termines, '✅ Aucune réception terminée', 'Les réceptions validées apparaîtront ici.');
+
+  // Aller sur "À compléter" si nouvelles entrées
+  if (complets.length > 0 && _recColActive === 'termine') showRecCol('complet');
+}
+
+function renderRecCol(colId, items, emptyTitle, emptySub) {
+  const el = document.getElementById(colId);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${emptyTitle.split(' ')[0]}</div><div class="empty-text">${emptyTitle.slice(2)}</div>${emptySub?`<div class="empty-sub">${emptySub}</div>`:''}</div>`;
+    return;
+  }
+  // Grouper par mois
+  const sorted = [...items].sort((a,b) => new Date(b.dateISO||0) - new Date(a.dateISO||0));
+  const byMonth = new Map();
+  sorted.forEach(r => {
+    const d = new Date(r.dateISO||0);
+    const k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    if (!byMonth.has(k)) byMonth.set(k,[]);
+    byMonth.get(k).push(r);
+  });
+  let html = '';
+  byMonth.forEach((entries, key) => {
+    const [y,m] = key.split('-');
+    const label = MOIS[parseInt(m)-1]+' '+y;
+    html += `<div class="month-header"><span class="month-label">📅 ${label}</span><span class="month-stat" style="color:var(--accent2)">${entries.length}</span></div>`;
+    html += entries.map(buildRecCard).join('');
+  });
+  el.innerHTML = html;
+}
+
+function buildRecCard(r) {
+  const isTermine = r.statut_mobile === 'termine'
+    || (!r.incomplet && !r.statut_mobile && ((r.labos?.some(l=>l.labo)) || r.photos?.some(p=>p.labos?.some(l=>l.labo))));
+  const color = isTermine ? 'var(--green)' : 'var(--purple)';
+  const icon  = isTermine ? '✅' : '📋';
+  const labosStr = (r.labos||[]).map(l=>l.labo||'?').filter(Boolean).join(', ')
+    || r.photos?.flatMap(p=>p.labos||[]).map(l=>l.labo).filter(Boolean).join(', ')
+    || r.labo || '—';
+  const totalColis = (r.labos||[]).reduce((s,l)=>s+(l.recus||0),0)
+    || r.photos?.flatMap(p=>p.labos||[]).reduce((s,l)=>s+(l.recus||0),0)
+    || r.nbRecus || 0;
+  const nbPhotos = r.photos?.length || (r.photoBase64 ? 1 : 0);
+
+  return `<div class="card" style="border-left:3px solid ${color}" onclick="openEditRecModal('${r.id}')">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="font-size:18px;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;margin-bottom:2px">${r.date||'—'}${r.heure?' à '+r.heure:''}</div>
+        <div style="font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${labosStr}</div>
+        <div style="font-size:11px;color:var(--ink2);margin-top:2px">
+          ${totalColis} colis${r.operateur?' · Op.'+r.operateur:''}${nbPhotos?' · 📷 '+nbPhotos:''}
+        </div>
+        ${!isTermine?`<div style="font-size:11px;color:${color};font-weight:600;margin-top:3px">Appuie pour renseigner les labos</div>`:''}
+      </div>
+      <button onclick="event.stopPropagation();openDeleteModal('${r.id}')"
+        style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--ink2);cursor:pointer;flex-shrink:0">🗑</button>
+    </div>
+    ${nbPhotos?`<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">
+      ${(r.photos||[]).slice(0,4).map(p=>`<img src="${p.base64}" style="height:40px;width:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">`).join('')}
+      ${nbPhotos>4?`<div style="height:40px;width:40px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);font-weight:700">+${nbPhotos-4}</div>`:''}
+    </div>`:''}
+  </div>`;
+}
+
+function labosComplets(r) {
+  if (!r.labos || !r.labos.length) return !!r.labo;
+  return r.labos.every(l => l.labo && l.labo.trim());
+}
+
+// ══════════════════════════════════════════════
+// RENDER BL
+// ══════════════════════════════════════════════
+function renderBL() {
+  const count = document.getElementById('bl-count');
+  if (count) count.textContent = storeBL.length;
+  if (!storeBL.length) {
+    document.getElementById('bl-list').innerHTML = `<div class="empty-state"><div class="empty-icon">🚚</div><div class="empty-text">Aucun BL synchronisé</div><div class="empty-sub">Synchronisez depuis l'app principale</div></div>`;
+    return;
+  }
+  const sorted = [...storeBL].sort((a,b) => {
+    const pa = parseDate(a.fields?.date), pb = parseDate(b.fields?.date);
+    if (!pa && !pb) return 0; if (!pa) return 1; if (!pb) return -1;
+    return pb - pa;
+  });
+  const byMonth = new Map();
+  sorted.forEach(d => {
+    const dt = parseDate(d.fields?.date) || new Date(0);
+    const k = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+    if (!byMonth.has(k)) byMonth.set(k, []);
+    byMonth.get(k).push(d);
+  });
+  let html = '';
+  byMonth.forEach((items, key) => {
+    const [y, m] = key.split('-');
+    const label = MOIS[parseInt(m)-1] + ' ' + y;
+    const montant = items.reduce((s,d)=>s+(parseFloat(d.fields?.montantHT||0)||0),0);
+    html += `<div class="month-header">
+      <span class="month-label">📅 ${label}</span>
+      <span class="month-stat" style="color:var(--accent2)">${items.length} BL</span>
+      ${montant>0?`<span class="month-stat" style="color:var(--green)">${montant.toFixed(0)} €</span>`:''}
+    </div>`;
+    html += items.map(d => {
+      const ok = d.status === 'ok';
+      const icon = ok ? '✅' : d.status === 'warn' ? '⚠️' : '⏳';
+      return `<div class="card">
+        <div class="bl-card">
+          <div class="bl-icon">${icon}</div>
+          <div class="bl-info">
+            <div class="bl-name" title="${d.name}">${d.name}</div>
+            <div class="bl-meta">${d.fields?.fournisseur||'—'} · ${d.fields?.date||'—'}${d.fields?.montantHT?' · '+d.fields.montantHT+' €':''}</div>
+          </div>
+          <span class="pill ${ok?'pill-ok':'pill-warn'}">${ok?'Prêt':'En attente'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  });
+  document.getElementById('bl-list').innerHTML = html;
+}
+
+function parseDate(str) {
+  if (!str) return null;
+  const p = str.split('/');
+  if (p.length === 3) return new Date(p[2], p[1]-1, p[0]);
+  return new Date(str);
+}
+
+// ══════════════════════════════════════════════
+// MODAL RÉCEPTION — tabs Rapide/Complet
+// ══════════════════════════════════════════════
+// ── Mode Rapide : stepper colis ──
+function changeRapideColis(delta) {
+  const el = document.getElementById('rapide-colis');
+  if (!el) return;
+  let n = parseInt(el.textContent) + delta;
+  if (n < 1) n = 1;
+  el.textContent = n;
+}
+
+// ── Mode Complet : lignes labo ──
+let _laboLinesComplet = [];
+
+function addLaboLineComplet(labo='', recus=1) {
+  _laboLinesComplet.push({labo, recus});
+  renderLaboLinesComplet();
+}
+
+function renderPagesDetail() {
+  const container = document.getElementById('pages-detail-list');
+  if (!container) return;
+
+  if (!_photos.length) {
+    container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--ink2);font-size:13px">
+      Passe en mode ⚡ Rapide pour ajouter des photos d'abord.
+    </div>`;
+    updateCompletTotal();
+    return;
+  }
+
+  container.innerHTML = _photos.map((p, pi) => {
+    const labos = p.labos || [];
+    const laboRows = labos.map((l, li) => {
+      const recusOpts = [1,2,3,4,5,6,7,8,9,10,12,15,20].map(n =>
+        `<option value="${n}"${(l.recus||1)==n?' selected':''}>${n}</option>`).join('');
+      return `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="flex:1;position:relative">
+            <input type="text" class="field-input" value="${l.labo||''}" placeholder="Nom du labo…"
+              style="font-size:14px;padding:9px 12px"
+              oninput="updatePageLabo(${pi},${li},'labo',this.value);showLaboDD(this,${pi},${li})"
+              onfocus="showLaboDD(this,${pi},${li})"
+              onblur="setTimeout(()=>{const d=this.nextElementSibling;if(d)d.style.display='none'},200)">
+            <div class="autocomplete-dd labo-dd" style="display:none"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+            <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px">Reçus</div>
+            <select class="field-input" style="padding:6px 8px;font-size:15px;font-weight:700;color:var(--green);min-width:64px;text-align:center"
+              onchange="updatePageLabo(${pi},${li},'recus',parseInt(this.value))">${recusOpts}</select>
+          </div>
+          <button class="labo-del" onclick="removePageLabo(${pi},${li})" style="font-size:18px;padding:4px 8px">✕</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">⚠️ Manquants</div>
+            <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)">
+              <button onclick="updatePageLabo(${pi},${li},'manquants',Math.max(0,(${l.manquants||0})-1))"
+                style="background:none;border:none;padding:8px 12px;font-size:18px;cursor:pointer;color:var(--ink2)">−</button>
+              <div style="flex:1;text-align:center;font-size:16px;font-weight:700">${l.manquants||0}</div>
+              <button onclick="updatePageLabo(${pi},${li},'manquants',(${l.manquants||0})+1)"
+                style="background:none;border:none;padding:8px 12px;font-size:18px;cursor:pointer;color:var(--ink2)">+</button>
+            </div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">❌ Refusés</div>
+            <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)">
+              <button onclick="updatePageLabo(${pi},${li},'refuses',Math.max(0,(${l.refuses||0})-1))"
+                style="background:none;border:none;padding:8px 12px;font-size:18px;cursor:pointer;color:var(--ink2)">−</button>
+              <div style="flex:1;text-align:center;font-size:16px;font-weight:700">${l.refuses||0}</div>
+              <button onclick="updatePageLabo(${pi},${li},'refuses',(${l.refuses||0})+1)"
+                style="background:none;border:none;padding:8px 12px;font-size:18px;cursor:pointer;color:var(--ink2)">+</button>
+            </div>
+          </div>
+        </div>
+        <input type="text" class="field-input" value="${(l.motif||'').replace(/"/g,'&quot;')}" placeholder="Motif refus / manquant…"
+          style="font-size:13px;padding:8px 12px;width:100%;box-sizing:border-box"
+          oninput="updatePageLabo(${pi},${li},'motif',this.value)">
+      </div>`;
+    }).join('');
+
+    const totalPage = labos.reduce((s,l)=>s+(l.recus||0),0);
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden">
+      <!-- En-tête page -->
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border)">
+        <img src="${p.base64}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--border);flex-shrink:0;cursor:pointer"
+          onclick="showPhotoZoom(${pi})">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.4px">Page ${pi+1}</div>
+          <div style="font-size:12px;color:var(--ink2);margin-top:2px">${labos.length} labo${labos.length>1?'s':''} · ${totalPage} colis</div>
+        </div>
+        <button onclick="showPhotoZoom(${pi})" style="background:var(--accent2-light);border:1px solid var(--accent2);border-radius:8px;padding:6px 10px;color:var(--accent2);cursor:pointer;font-size:13px;font-weight:700">👁 Voir</button>
+        <button onclick="removePage(${pi})" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--danger);cursor:pointer;font-size:13px">🗑</button>
+      </div>
+      <!-- Labos de cette page -->
+      <div style="padding:12px 14px">
+        ${laboRows}
+        <button class="btn btn-secondary" style="width:100%;justify-content:center;font-size:12px;padding:8px"
+          onclick="addPageLabo(${pi})">+ Ajouter un labo sur cette page</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  updateCompletTotal();
+}
+
+function updateCompletTotal() {
+  const total = _photos.reduce((s,p) => s + (p.labos||[]).reduce((ss,l)=>ss+(l.recus||0),0), 0);
+  const el = document.getElementById('complet-total');
+  if (el) el.textContent = total;
+}
+
+function updatePageLabo(pi, li, field, val) {
+  if (!_photos[pi]) return;
+  if (!_photos[pi].labos) _photos[pi].labos = [];
+  if (!_photos[pi].labos[li]) _photos[pi].labos[li] = {labo:'', recus:1};
+  _photos[pi].labos[li][field] = val;
+  if (field === 'recus') renderPagesDetail();
+  else updateCompletTotal();
+}
+
+function addPageLabo(pi) {
+  if (!_photos[pi]) return;
+  if (!_photos[pi].labos) _photos[pi].labos = [];
+  _photos[pi].labos.push({labo:'', recus:1, manquants:0, refuses:0, motif:''});
+  renderPagesDetail();
+}
+
+function removePageLabo(pi, li) {
+  _photos[pi]?.labos?.splice(li, 1);
+  renderPagesDetail();
+}
+
+function removePage(pi) {
+  _photos.splice(pi, 1);
+  renderPhotoGrid();
+  renderPagesDetail();
+}
+
+function showLaboDD(inp, pi, li) {
+  const q = inp.value.toLowerCase().trim();
+  const dd = inp.nextElementSibling;
+  if (!dd) return;
+  const matches = q ? _labosKnown.filter(l => l.toLowerCase().includes(q)).slice(0,8) : _labosKnown.slice(0,8);
+  if (!matches.length) { dd.style.display='none'; return; }
+  dd.innerHTML = matches.map(l =>
+    `<div class="autocomplete-item" onmousedown="event.preventDefault();updatePageLabo(${pi},${li},'labo','${l.replace(/'/g,"\\'")}');renderPagesDetail()">
+      <span>${l}</span>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function showPhotoZoom(indexOrSrc) {
+  const src = typeof indexOrSrc === 'number' ? _photos[indexOrSrc]?.base64 : indexOrSrc;
+  if (!src) return;
+  const lb = document.createElement('div');
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  lb.innerHTML = `
+    <button onclick="this.parentElement.remove()" style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer">✕</button>
+    <img src="${src}" style="max-width:100%;max-height:90vh;border-radius:8px;object-fit:contain">`;
+  lb.onclick = e => { if(e.target===lb) lb.remove(); };
+  document.body.appendChild(lb);
+}
+
+function triggerPhotoComplet() {
+  document.getElementById('photo-input-complet')?.click();
+}
+
+function onPhotoSelectedComplet(input) {
+  const files = [...input.files];
+  files.forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      _photos.push({ base64: e.target.result, name: f.name, labos: [{labo:'', recus:1, manquants:0, refuses:0, motif:''}] });
+      renderPagesDetail();
+      renderPhotoGrid();
+    };
+    reader.readAsDataURL(f);
+  });
+  input.value = '';
+}
+
+let _recTab = 'rapide';
+
+function setRecTab(tab) {
+  _recTab = tab;
+  // Afficher/cacher les tabs D'ABORD
+  document.getElementById('rec-tab-rapide').style.display  = tab === 'rapide'  ? '' : 'none';
+  document.getElementById('rec-tab-complet').style.display = tab === 'complet' ? '' : 'none';
+  document.getElementById('tab-rapide').style.color        = tab === 'rapide'  ? 'var(--accent)'  : 'var(--ink2)';
+  document.getElementById('tab-complet').style.color       = tab === 'complet' ? 'var(--accent)'  : 'var(--ink2)';
+  document.getElementById('tab-rapide').style.borderBottomColor  = tab === 'rapide'  ? 'var(--accent)' : 'transparent';
+  document.getElementById('tab-complet').style.borderBottomColor = tab === 'complet' ? 'var(--accent)' : 'transparent';
+  document.getElementById('btn-save-rec').textContent = tab === 'rapide' ? '⚡ Enregistrer' : '✅ Valider';
+  // ENSUITE render (l'élément pages-detail-list est maintenant visible)
+  if (tab === 'complet') {
+    _photos.forEach(p => { if (!p.labos || !p.labos.length) p.labos = [{labo:'', recus:1}]; });
+    renderPagesDetail();
+    const opR = document.getElementById('rec-operateur')?.value;
+    const opC = document.getElementById('rec-operateur-complet');
+    if (opC && opR) opC.value = opR;
+  }
+}
+
+function openNewRecModal() {
+  document.getElementById('edit-id').value = '';
+  document.getElementById('modal-rec-title').textContent = '📦 Nouvelle réception';
+  document.getElementById('rec-operateur').value = '';
+  const rc = document.getElementById('rapide-colis'); if(rc) rc.textContent = '1';
+  document.getElementById('bl-non-recu').checked = false;
+  onBlNonRecuChange(document.getElementById('bl-non-recu'));
+  _photos = [];
+  _laboLinesComplet = [];
+  renderPhotoGrid();
+  setRecTab('rapide');
+  openModal('modal-reception');
+}
+
+function openEditRecModal(id) {
+  const r = recPhysList.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('edit-id').value = id;
+  document.getElementById('modal-rec-title').textContent = '✏️ Modifier réception';
+  document.getElementById('bl-non-recu').checked = !!r.blNonRecu;
+  document.getElementById('rec-operateur').value = r.operateur || '';
+
+  // Restaurer les photos avec leurs labos
+  if (Array.isArray(r.photos) && r.photos.length) {
+    _photos = r.photos.map(p => ({
+      base64: p.base64,
+      name: p.name,
+      // Labos stockés sur la photo, ou labos globaux répartis, ou vide
+      labos: Array.isArray(p.labos) && p.labos.length
+        ? p.labos.map(l => ({labo: l.labo||'', recus: l.recus||l.nbRecus||1}))
+        : [{labo:'', recus:1}]
+    }));
+  } else if (r.photoBase64) {
+    _photos = [{base64: r.photoBase64, name:'photo', labos:[{labo:'', recus:1}]}];
+  } else {
+    _photos = [];
+  }
+
+  // Si labos globaux existants et photos sans labos → distribuer sur la 1ère page
+  if (Array.isArray(r.labos) && r.labos.length && _photos.length) {
+    const photosWithoutLabos = _photos.filter(p => !p.labos.some(l=>l.labo));
+    if (photosWithoutLabos.length === _photos.length) {
+      // Toutes les photos sont sans labos → mettre tous les labos sur la 1ère page
+      _photos[0].labos = r.labos.map(l => ({labo: l.labo||'', recus: l.recus||l.nbRecus||1, manquants: l.manquants||0, refuses: l.refuses||0, motif: l.motif||''}));
+    }
+  }
+
+  // Pré-remplir nb colis rapide
+  const rc = document.getElementById('rapide-colis');
+  if (rc) rc.textContent = r.nbRecus || 1;
+
+  // Opérateur complet
+  const opC = document.getElementById('rec-operateur-complet');
+  if (opC) opC.value = r.operateur || '';
+
+  renderPhotoGrid();
+
+  // Ouvrir en mode Complet si photos existent (pour pouvoir les détailler)
+  // Ouvrir en Rapide seulement si pas de photos du tout
+  if (_photos.length > 0) {
+    setRecTab('complet');
+  } else {
+    setRecTab('rapide');
+  }
+
+  openModal('modal-reception');
+}
+
+// ══════════════════════════════════════════════
+// PAGES AVEC LABOS (mode complet)
+// ══════════════════════════════════════════════
+// NB: renderPagesDetail() est définie plus haut (avec bouton 👁 Voir) — cette section ne la redéfinit pas.
+
+function addLaboToPage(pi) {
+  if (!_photos[pi].labos) _photos[pi].labos = [];
+  _photos[pi].labos.push({labo:'', recus:1});
+  renderPagesDetail();
+}
+
+function removeLaboFromPage(pi, li) {
+  _photos[pi].labos.splice(li, 1);
+  renderPagesDetail();
+}
+
+function changeCountPage(pi, li, delta) {
+  if (!_photos[pi].labos?.[li]) return;
+  let n = (_photos[pi].labos[li].recus || 1) + delta;
+  if (n < 1) n = 1;
+  _photos[pi].labos[li].recus = n;
+  renderPagesDetail();
+}
+
+function onLaboInputPage(inp, pi) {
+  // Mettre à jour la valeur dans _photos
+  const li = parseInt(inp.dataset.labo);
+  if (_photos[pi]?.labos?.[li] !== undefined) _photos[pi].labos[li].labo = inp.value;
+  // Autocomplétion
+  const q = inp.value.toLowerCase().trim();
+  const dd = inp.nextElementSibling;
+  if (!dd) return;
+  const matches = q ? _labosKnown.filter(l => l.toLowerCase().includes(q)).slice(0,8) : _labosKnown.slice(0,8);
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(l =>
+    `<div class="autocomplete-item" onmousedown="selectLaboPage(event,'${l.replace(/'/g,"\\'")}',${pi},${li})">
+      <span>${l}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function selectLaboPage(e, name, pi, li) {
+  e.preventDefault();
+  if (_photos[pi]?.labos?.[li] !== undefined) _photos[pi].labos[li].labo = name;
+  renderPagesDetail();
+}
+
+let _laboDdTimeout = null;
+function addLaboRow(labo='', recus=1) {
+  const id = Date.now() + Math.random();
+  const row = document.createElement('div');
+  row.className = 'labo-row';
+  row.dataset.rowId = id;
+  row.innerHTML = `
+    <div style="flex:1;position:relative">
+      <input type="text" class="field-input labo-name-input" value="${labo}" placeholder="Nom du labo…" autocomplete="off"
+        oninput="onLaboInput(this)" onfocus="onLaboInput(this)" onblur="setTimeout(()=>closeLaboDD(this),200)">
+      <div class="autocomplete-dd labo-dd" style="display:none"></div>
+    </div>
+    <div class="labo-count-wrap">
+      <button class="labo-count-btn" onclick="changeCount(this,-1)">−</button>
+      <div class="labo-count-val">${recus}</div>
+      <button class="labo-count-btn" onclick="changeCount(this,1)">+</button>
+    </div>
+    <button class="labo-del" onclick="this.closest('.labo-row').remove()">✕</button>`;
+  document.getElementById('labo-rows').appendChild(row);
+}
+
+function changeCount(btn, delta) {
+  const val = btn.parentElement.querySelector('.labo-count-val');
+  let n = parseInt(val.textContent) + delta;
+  if (n < 1) n = 1;
+  val.textContent = n;
+}
+
+function onLaboInput(inp) {
+  const q = inp.value.toLowerCase().trim();
+  const dd = inp.nextElementSibling;
+  if (!q || q.length < 1) { dd.style.display = 'none'; return; }
+  const matches = _labosKnown.filter(l => l.toLowerCase().includes(q)).slice(0, 8);
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(l =>
+    `<div class="autocomplete-item" onmousedown="selectLabo(this,'${l.replace(/'/g,"\\'")}')">
+      <span>${l}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function selectLabo(el, name) {
+  const row = el.closest('.labo-row');
+  row.querySelector('.labo-name-input').value = name;
+  row.querySelector('.labo-dd').style.display = 'none';
+}
+
+function closeLaboDD(inp) {
+  inp.nextElementSibling.style.display = 'none';
+}
+
+// ══════════════════════════════════════════════
+// PHOTOS
+// ══════════════════════════════════════════════
+function onBlNonRecuChange(cb) {
+  const sansDoc = cb.checked;
+  // Hints
+  document.getElementById('rec-hint-doc').style.display   = sansDoc ? 'none' : '';
+  document.getElementById('rec-hint-colis').style.display = sansDoc ? '' : 'none';
+  // Label et texte de la zone photo
+  const label = document.getElementById('photo-label');
+  const zoneText = document.getElementById('photo-zone-text');
+  if (label) label.textContent = sansDoc ? 'Photos des colis *' : 'Photos des bordereaux *';
+  if (zoneText) zoneText.textContent = sansDoc ? 'Photographier le(s) colis' : 'Photographier une page';
+}
+
+function triggerPhoto() {
+  document.getElementById('photo-input').click();
+}
+
+function onPhotoSelected(input) {
+  const files = [...input.files];
+  files.forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      _photos.push({ base64: e.target.result, name: f.name, labos: [] });
+      renderPhotoGrid();
+    };
+    reader.readAsDataURL(f);
+  });
+  input.value = '';
+}
+
+function renderPhotoGrid() {
+  const grid = document.getElementById('photo-grid');
+  if (!_photos.length) { if(grid) grid.innerHTML = ''; }
+  else if(grid) {
+    grid.innerHTML = _photos.map((p, i) =>
+      `<div class="photo-thumb">
+        <img src="${p.base64}" alt="page ${i+1}">
+        <button class="photo-thumb-del" onclick="_photos.splice(${i},1);renderPhotoGrid()">✕</button>
+      </div>`
+    ).join('');
+  }
+  // Rafraîchir aussi la vue complet si active
+  if (_recTab === 'complet') renderPagesDetail();
+}
+
+async function saveReception() {
+  // Choisir la source d'opérateur selon le tab
+  const operateur = _recTab === 'complet'
+    ? (document.getElementById('rec-operateur-complet')?.value || document.getElementById('rec-operateur')?.value)
+    : document.getElementById('rec-operateur').value;
+  if (!operateur) { toast('Sélectionnez un opérateur', 'error'); return; }
+
+  let labos = [];
+  let nbRecusTotal = 0;
+  let incomplet = true;
+
+  if (_recTab === 'rapide') {
+    // Mode rapide : nb colis global, pas de labo
+    nbRecusTotal = parseInt(document.getElementById('rapide-colis')?.textContent) || 1;
+    incomplet = true; // toujours à compléter en rapide
+    if (!_photos.length) {
+      toast('📸 Au moins une photo obligatoire', 'error'); return;
+    }
+  } else {
+    // Mode complet : lire les labos par page
+    if (!_photos.length) { toast('📸 Au moins une photo obligatoire', 'error'); btn.disabled=false; return; }
+    labos = _photos.flatMap(p => (p.labos||[]).filter(l => l.labo?.trim() && l.recus > 0));
+    if (!labos.length) { toast('Renseigne au moins un labo avec des colis', 'error'); btn.disabled=false; return; }
+    nbRecusTotal = labos.reduce((s,l) => s+l.recus, 0);
+    incomplet = false;
+  }
+
+  const btn = document.getElementById('btn-save-rec');
+  btn.disabled = true; btn.textContent = '⏳…';
+
+  const now = new Date();
+  const editId = document.getElementById('edit-id').value;
+  const blNonRecu = _recTab === 'complet'
+    ? document.getElementById('bl-non-recu-complet')?.checked
+    : document.getElementById('bl-non-recu').checked;
+
+  const entry = {
+    id: editId || 'rp_' + Date.now(),
+    date: now.toLocaleDateString('fr-FR'),
+    heure: now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}),
+    dateISO: now.toISOString(),
+    operateur,
+    labos,
+    labo: labos[0]?.labo || '',
+    nbRecus: nbRecusTotal,
+    blNonRecu,
+    photos: _photos.map(p => ({base64: p.base64, name: p.name, labos: p.labos||[]})),
+    photoBase64: _photos[0]?.base64 || null,
+    incomplet,
+    statut_mobile: _recTab === 'rapide' ? 'complet' : (incomplet ? 'complet' : 'termine'),
+    archived: false
+  };
+
+  if (editId) {
+    const idx = recPhysList.findIndex(r => r.id === editId);
+    if (idx >= 0) recPhysList[idx] = { ...recPhysList[idx], ...entry };
+    else recPhysList.unshift(entry);
+  } else {
+    recPhysList.unshift(entry);
+  }
+
+  // Fermer + render immédiatement
+  closeModal();
+  render();
+  const msg = _recTab === 'rapide'
+    ? `⚡ ${nbRecusTotal} colis enregistrés — complète les labos ensuite`
+    : `✅ ${labos.map(l=>l.labo+' ('+l.recus+')').join(', ')}`;
+  toast(msg, 'success');
+  btn.disabled = false;
+  btn.textContent = _recTab === 'rapide' ? '⚡ Enregistrer' : '✅ Valider';
+  // Upload photos + save en arrière-plan
+  (async () => {
+    try {
+      const token = await getToken();
+      for (let i = 0; i < _photos.length; i++) {
+        const p = _photos[i];
+        if (!p.base64?.startsWith('data:')) continue;
+        const ext = p.name?.split('.').pop() || 'jpg';
+        const fname = `RecPhys_${entry.id}_${i+1}.${ext}`;
+        const blob = await fetch(p.base64).then(r => r.blob());
+        await fetch(`${GRAPH}/me/drive/root:/ReconcilIA/Photos/${encodeURIComponent(fname)}:/content`, {
+          method: 'PUT',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': blob.type },
+          body: blob
+        });
+      }
+    } catch(e) { console.warn('Upload:', e); }
+    await saveRecPhys().catch(e => console.warn('Save:', e));
+  })();
+}
+
+// ══════════════════════════════════════════════
+// SUPPRESSION
+// ══════════════════════════════════════════════
+function openDeleteModal(id) {
+  const r = recPhysList.find(x => x.id === id);
+  if (!r) return;
+  _deleteTarget = id;
+  const label = r.labo || (r.labos?.[0]?.labo) || r.transporteur || '?';
+  document.getElementById('delete-msg').textContent = `Supprimer la réception du ${r.date} — ${label} ?`;
+  document.getElementById('delete-code').value = '';
+  openModal('modal-delete');
+  setTimeout(() => document.getElementById('delete-code')?.focus(), 300);
+}
+
+function closeDeleteModal() {
+  _deleteTarget = null;
+  closeModal('modal-delete');
+}
+
+async function confirmDelete() {
+  const code = document.getElementById('delete-code').value;
+  if (code !== '55') {
+    toast('Code incorrect', 'error');
+    document.getElementById('delete-code').value = '';
+    document.getElementById('delete-code').focus();
+    return;
+  }
+  if (!_deleteTarget) return;
+  recPhysList = recPhysList.filter(r => r.id !== _deleteTarget);
+  _deleteTarget = null;
+  // Fermer + render immédiatement sans attendre OneDrive
+  closeModal('modal-delete');
+  render();
+  toast('🗑 Réception supprimée', 'info');
+  // Sauvegarder en arrière-plan
+  saveRecPhys().catch(e => console.warn('Save:', e));
+}
+
+// ══════════════════════════════════════════════
+// MODALS
+// ══════════════════════════════════════════════
+function openModal(id) {
+  const el = document.getElementById(id || 'modal-reception');
+  if (el) { el.classList.add('open'); document.body.style.overflow = 'hidden'; }
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id || 'modal-reception');
+  if (el) { el.classList.remove('open'); document.body.style.overflow = ''; }
+}
+
+// Fermer en cliquant l'overlay
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+// ══════════════════════════════════════════════
+// PULL-TO-REFRESH + AUTO-REFRESH
+// ══════════════════════════════════════════════
+let _pullStartY = 0;
+let _pulling = false;
+let _autoRefreshTimer = null;
+
+function initPullToRefresh() {
+  const pages = document.getElementById('pages');
+  let indicator = document.createElement('div');
+  indicator.id = 'pull-indicator';
+  indicator.style.cssText = 'position:fixed;top:120px;left:50%;transform:translateX(-50%) translateY(-60px);background:var(--accent);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:500;transition:transform 0.2s,opacity 0.2s;opacity:0;pointer-events:none';
+  indicator.textContent = '↓ Tirer pour actualiser';
+  document.body.appendChild(indicator);
+
+  pages.addEventListener('touchstart', e => {
+    const page = pages.querySelector('.page.active');
+    if (page && page.scrollTop === 0) {
+      _pullStartY = e.touches[0].clientY;
+      _pulling = true;
+    }
+  }, { passive: true });
+
+  pages.addEventListener('touchmove', e => {
+    if (!_pulling) return;
+    const delta = e.touches[0].clientY - _pullStartY;
+    if (delta > 10) {
+      const progress = Math.min(delta / 80, 1);
+      indicator.style.opacity = progress;
+      indicator.style.transform = `translateX(-50%) translateY(${-60 + progress * 60}px)`;
+      indicator.textContent = progress >= 1 ? '↑ Relâcher pour actualiser' : '↓ Tirer pour actualiser';
+    }
+  }, { passive: true });
+
+  pages.addEventListener('touchend', async e => {
+    if (!_pulling) return;
+    _pulling = false;
+    const delta = e.changedTouches[0].clientY - _pullStartY;
+    indicator.style.opacity = '0';
+    indicator.style.transform = 'translateX(-50%) translateY(-60px)';
+    if (delta > 80) {
+      indicator.textContent = '⏳ Actualisation…';
+      indicator.style.opacity = '1';
+      indicator.style.transform = 'translateX(-50%) translateY(0)';
+      await refreshData();
+      indicator.style.opacity = '0';
+      indicator.style.transform = 'translateX(-50%) translateY(-60px)';
+    }
+  }, { passive: true });
+}
+
+async function refreshData() {
+  const si = document.getElementById('sync-indicator');
+  if (si) { si.style.display = ''; si.textContent = '⏳'; }
+  await loadData();
+  render();
+  const activePage = document.querySelector('.page.active')?.id;
+  if (activePage === 'page-bl') renderBL();
+  if (si) { si.textContent = '✅'; setTimeout(() => { si.style.display = 'none'; si.textContent = '⏳'; }, 2000); }
+  toast('✅ Actualisé', 'success');
+}
+
+function startAutoRefresh() {
+  if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+  _autoRefreshTimer = setInterval(async () => {
+    if (document.visibilityState === 'visible') {
+      await loadData();
+      render();
+      const activePage = document.querySelector('.page.active')?.id;
+      if (activePage === 'page-bl') renderBL();
+    }
+  }, 10 * 60 * 1000); // 10 minutes
+}
+
+// Recharger aussi quand l'app repasse au premier plan
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && _token) {
+    await loadData();
+    render();
+  }
+});
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast-item ' + (type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warn' ? 'warn' : '');
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // État initial non connecté
+  document.getElementById('recentes-list').innerHTML = `<div class="empty-state"><div class="empty-icon">☁️</div><div class="empty-text">Non connecté</div><div class="empty-sub"><button class="btn btn-primary" onclick="signIn()">🔗 Connexion Microsoft</button></div></div>`;
+});
+</script>
+</body>
+</html>
