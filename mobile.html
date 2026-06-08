@@ -391,7 +391,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
             <div style="font-size:28px">📷</div>
             <div style="font-size:13px;font-weight:600;margin-top:4px;color:var(--ink2)" id="photo-zone-text">Photographier une page</div>
           </div>
-          <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="onPhotoSelected(this)">
+          <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(this)">
         </div>
 
         <!-- Opérateur -->
@@ -408,10 +408,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
         <!-- Nombre total de colis -->
         <div class="field-group">
           <div class="field-label required">Nombre total de colis reçus</div>
-          <select id="rapide-colis" class="field-input"
-            style="font-size:32px;font-weight:700;font-family:var(--font-mono);color:var(--green);text-align:center;padding:12px;width:100%">
-            <option value="1"selected>1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option>
-          </select>
+          <div class="stepper">
+            <button class="stepper-btn" onclick="changeRapideColis(-1)">−</button>
+            <div class="stepper-val" id="rapide-colis">1</div>
+            <button class="stepper-btn" onclick="changeRapideColis(1)">+</button>
+          </div>
         </div>
 
         <!-- Pas de document -->
@@ -445,7 +446,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); font-family:
         <button class="btn btn-secondary btn-full" onclick="triggerPhotoComplet()" style="margin-bottom:14px">
           📷 Ajouter une page
         </button>
-        <input type="file" id="photo-input-complet" accept="image/*" style="display:none" onchange="onPhotoSelectedComplet(this)">
+        <input type="file" id="photo-input-complet" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelectedComplet(this)">
 
         <!-- Total calculé -->
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -1126,7 +1127,7 @@ function openNewRecModal() {
   document.getElementById('edit-id').value = '';
   document.getElementById('modal-rec-title').textContent = '📦 Nouvelle réception';
   document.getElementById('rec-operateur').value = '';
-  const rc = document.getElementById('rapide-colis'); if(rc) rc.value = '1';
+  const rc = document.getElementById('rapide-colis'); if(rc) rc.textContent = '1';
   document.getElementById('bl-non-recu').checked = false;
   onBlNonRecuChange(document.getElementById('bl-non-recu'));
   _photos = [];
@@ -1171,7 +1172,7 @@ function openEditRecModal(id) {
 
   // Pré-remplir nb colis rapide
   const rc = document.getElementById('rapide-colis');
-  if (rc) rc.value = r.nbRecus || 1;
+  if (rc) rc.textContent = r.nbRecus || 1;
 
   // Opérateur complet
   const opC = document.getElementById('rec-operateur-complet');
@@ -1350,7 +1351,7 @@ async function saveReception() {
 
   if (_recTab === 'rapide') {
     // Mode rapide : nb colis global, pas de labo
-    nbRecusTotal = parseInt(document.getElementById('rapide-colis')?.value) || 1;
+    nbRecusTotal = parseInt(document.getElementById('rapide-colis')?.textContent) || 1;
     incomplet = true; // toujours à compléter en rapide
     if (!_photos.length) {
       toast('📸 Au moins une photo obligatoire', 'error'); return;
@@ -1579,8 +1580,8 @@ function toast(msg, type = 'info') {
 // ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   // État initial non connecté
-  const el = document.getElementById('col-complet');
-  if (el) el.innerHTML = `<div class="empty-state"><div class="empty-icon">☁️</div><div class="empty-text">Non connecté</div><div class="empty-sub"><button class="btn btn-primary" onclick="signIn()">🔗 Connexion Microsoft</button></div></div>`;
+  const _rl = document.getElementById('col-complet') || document.getElementById('recentes-list');
+  if (_rl) _rl.innerHTML = `<div class="empty-state"><div class="empty-icon">☁️</div><div class="empty-text">Non connecté</div><div class="empty-sub"><button class="btn btn-primary" onclick="signIn()">🔗 Connexion Microsoft</button></div></div>`;
 });
 </script>
 </body>
