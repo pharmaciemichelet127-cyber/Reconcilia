@@ -525,7 +525,7 @@ const MSAL_CONFIG = {
     authority: 'https://login.microsoftonline.com/common',
     redirectUri: window.location.origin + window.location.pathname
   },
-  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
 };
 const OD_RECPHYS_PATH = '/me/drive/root:/ReconcilIA/reconcilia-recphys.json:/content';
 const OD_STORE_PATH   = '/me/drive/root:/ReconcilIA/reconcilia-store.json:/content';
@@ -558,8 +558,9 @@ async function getToken() {
     const r = await _msalApp.acquireTokenSilent({ scopes: ['Files.ReadWrite'], account: currentUser });
     _token = r.accessToken; return _token;
   } catch {
-    const r = await _msalApp.acquireTokenPopup({ scopes: ['Files.ReadWrite'] });
-    _token = r.accessToken; return _token;
+    // Pas de popup sur Firefox/Safari mobile — redirect
+    await _msalApp.acquireTokenRedirect({ scopes: ['Files.ReadWrite'], account: currentUser });
+    return null; // la page va se recharger après redirect
   }
 }
 
