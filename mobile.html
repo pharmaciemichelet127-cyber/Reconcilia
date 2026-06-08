@@ -558,9 +558,8 @@ async function getToken() {
     const r = await _msalApp.acquireTokenSilent({ scopes: ['Files.ReadWrite'], account: currentUser });
     _token = r.accessToken; return _token;
   } catch {
-    // Pas de popup sur Firefox/Safari mobile — redirect
     await _msalApp.acquireTokenRedirect({ scopes: ['Files.ReadWrite'], account: currentUser });
-    return null; // la page va se recharger après redirect
+    return null;
   }
 }
 
