@@ -1579,7 +1579,7 @@ function toast(msg, type = 'info') {
 // ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   // État initial non connecté
-  document.getElementById('recentes-list').innerHTML = `<div class="empty-state"><div class="empty-icon">☁️</div><div class="empty-text">Non connecté</div><div class="empty-sub"><button class="btn btn-primary" onclick="signIn()">🔗 Connexion Microsoft</button></div></div>`;
+  const _el = document.getElementById('col-complet'); if(_el) _el.innerHTML = `<div class="empty-state"><div class="empty-icon">☁️</div><div class="empty-text">Non connecté</div><div class="empty-sub"><button class="btn btn-primary" onclick="signIn()">🔗 Connexion Microsoft</button></div></div>`;
 });
 </script>
 </body>
