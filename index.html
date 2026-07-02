@@ -3434,7 +3434,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260702z09';
+const APP_VERSION = '2.0.20260702z10';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -4743,6 +4743,10 @@ async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
     doc.base64=base64;
     const b64=base64.split(',')[1];
     const mediaType=isPDF?'application/pdf':'image/jpeg';
+    // Warning si le document est très lourd (> 8MB en base64 ≈ 6MB brut)
+    if(b64.length > 8*1024*1024) {
+      logActivity(`⚠ "${doc.name}" — document très lourd (${Math.round(b64.length/1024/1024)}MB), risque d'erreur API`, 'warn');
+    }
 
     // Prompt compact pour réduire la consommation de tokens
     const prompt=`Analyse ce document pharmaceutique. JSON uniquement, sans backticks.
