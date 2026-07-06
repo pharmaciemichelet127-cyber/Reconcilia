@@ -838,6 +838,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
   </div>
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     <input type="text" id="docs-filter-labo-bl2" placeholder="🔍 Labo / Fournisseur..." oninput="renderDocsBL()" style="flex:1;min-width:160px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:13px;outline:none">
+    <input type="text" id="docs-filter-numbl" placeholder="🔢 N° BL..." oninput="renderDocsBL()" style="width:130px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:13px;outline:none;font-family:'JetBrains Mono',monospace">
     <select id="docs-filter-periode-bl2" onchange="renderDocsBL()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:13px;outline:none">
       <option value="all" selected>Toutes dates</option>
       <option value="today">Aujourd'hui</option>
@@ -3562,7 +3563,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260706z30';
+const APP_VERSION = '2.0.20260706z31';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -8564,7 +8565,14 @@ function renderDocItem(doc){
   }
   updateNav();
 }
-function buildDocEl(doc){const div=document.createElement('div');div.className='doc-item';div.id='ditem-'+doc.id;const sMap={pending:'<span class="doc-status pending">En attente</span>',processing:`<span class="doc-status processing"><span class="spin"></span>IA…</span>`,ok:'<span class="doc-status ok">✓ Prêt</span>',warn:'<span class="doc-status warn">⚠ Vérifier</span>'};const meta=[doc.fields.fournisseur,doc.fields.date,doc.fields.montantHT?doc.fields.montantHT+' € HT':'',doc.fields.datePaiement?'Éch. '+doc.fields.datePaiement:''].filter(Boolean).join(' · ');const openBtn=doc.odId?`<button class="btn-icon" onclick="previewDoc('${doc.id}','${doc.type}')" title="Voir le document" style="border-color:var(--accent2);color:var(--accent2)">👁</button>`:'';const warnBtns=doc.status==='warn'?`<button class="btn-icon" onclick="forceDocReady('${doc.id}','${doc.type}')" title="Forcer Prêt" style="border-color:var(--green);color:var(--green)">✓</button><button class="btn-icon" onclick="reclassifyDoc('${doc.id}','${doc.type}')" title="Reclassifier avec l'IA" style="border-color:var(--accent2);color:var(--accent2)">🤖</button>`:'';div.innerHTML=`<div style="font-size:20px;flex-shrink:0">${doc.name.match(/\.pdf$/i)?'📄':'🖼'}</div><div class="doc-info"><div class="doc-name">${doc.name}</div><div class="doc-meta">${meta||doc.size} · ${doc.eans.length} EAN</div></div>${sMap[doc.status]||''}${warnBtns}${openBtn}<button class="btn-icon" onclick="openEditDoc('${doc.id}','${doc.type}')" title="Modifier" style="border-color:var(--accent2);color:var(--accent2)">✏️</button><button class="btn-icon" onclick="manualDelete('${doc.id}','${doc.type}')" title="Supprimer">🗑</button>`;return div;}
+function buildDocEl(doc){const div=document.createElement('div');div.className='doc-item';div.id='ditem-'+doc.id;const sMap={pending:'<span class="doc-status pending">En attente</span>',processing:`<span class="doc-status processing"><span class="spin"></span>IA…</span>`,ok:'<span class="doc-status ok">✓ Prêt</span>',warn:'<span class="doc-status warn">⚠ Vérifier</span>'};
+const isBL = doc.type === 'bl';
+const refDisplay = doc.fields.ref ? `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--accent-light);color:var(--accent);padding:2px 7px;border-radius:6px;font-weight:700">N° ${doc.fields.ref}</span>` : '';
+const meta=[doc.fields.fournisseur,doc.fields.date,doc.fields.montantHT?doc.fields.montantHT+' € HT':'',doc.fields.datePaiement?'Éch. '+doc.fields.datePaiement:''].filter(Boolean).join(' · ');
+const openBtn=doc.odId?`<button class="btn-icon" onclick="previewDoc('${doc.id}','${doc.type}')" title="Voir le document" style="border-color:var(--accent2);color:var(--accent2)">👁</button>`:'';
+const warnBtns=doc.status==='warn'?`<button class="btn-icon" onclick="forceDocReady('${doc.id}','${doc.type}')" title="Forcer Prêt" style="border-color:var(--green);color:var(--green)">✓</button><button class="btn-icon" onclick="reclassifyDoc('${doc.id}','${doc.type}')" title="Reclassifier avec l'IA" style="border-color:var(--accent2);color:var(--accent2)">🤖</button>`:'';
+const bcBtn = isBL && doc.status==='ok' ? `<button class="btn-icon" onclick="generateBcFromBL('${doc.id}')" title="Générer codes-barres" style="border-color:var(--green);color:var(--green)">🔍</button>` : '';
+div.innerHTML=`<div style="font-size:20px;flex-shrink:0">${doc.name.match(/\.pdf$/i)?'📄':'🖼'}</div><div class="doc-info"><div class="doc-name">${doc.name}</div><div class="doc-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${refDisplay}<span>${meta||doc.size} · ${doc.eans.length} EAN</span></div></div>${sMap[doc.status]||''}${warnBtns}${bcBtn}${openBtn}<button class="btn-icon" onclick="openEditDoc('${doc.id}','${doc.type}')" title="Modifier" style="border-color:var(--accent2);color:var(--accent2)">✏️</button><button class="btn-icon" onclick="manualDelete('${doc.id}','${doc.type}')" title="Supprimer">🗑</button>`;return div;}
 
 function forceDocReady(docId, type) {
   // Chercher dans tous les stores au cas où le type est incorrect
@@ -9145,12 +9153,45 @@ function _renderMonthHeaderFAC(key, docs, collapsed) {
   </div>`;
 }
 
+// Générer les codes-barres d'un BL directement depuis la liste BL
+async function generateBcFromBL(docId) {
+  const doc = store.bl.find(d => d.id === docId);
+  if (!doc) return;
+
+  // Basculer vers l'onglet Codes-barres
+  const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
+  showPage('barcodes', bcBtn);
+
+  // Si le BL a déjà des EANs extraits → les utiliser directement
+  if (doc.eans && doc.eans.length > 0) {
+    _bcItems = doc.eans.map(e => ({
+      ean: e.ean,
+      designation: e.designation || '—',
+      qte: e.qte || 0
+    })).filter(e => isValidEAN13(e.ean));
+    _bcTitle = (doc.fields?.fournisseur || '') + (doc.fields?.ref ? ' — N° ' + doc.fields.ref : '') || doc.name.replace(/\.pdf$/i,'');
+    if (_bcItems.length) {
+      renderBcTable();
+      toast(`✅ ${_bcItems.length} EAN-13 chargés depuis "${doc.fields?.fournisseur||doc.name}"`, 'success');
+      return;
+    }
+  }
+
+  // Sinon : charger et extraire (même flow que "Utiliser" depuis la recherche)
+  await loadBcFromStore(docId);
+}
+
 function renderDocsBL() {
   const el = document.getElementById('list-bl2');
   const cnt = document.getElementById('count-bl2');
   if (!el) return;
   const all = [...store.bl].sort((a,b) => { const pa=parseDate(a.fields?.date),pb=parseDate(b.fields?.date); if(!pa&&!pb)return 0;if(!pa)return 1;if(!pb)return-1;return pb-pa; });
-  const filtered = all.filter(d => filterDoc(d, 'docs-filter-labo-bl2', 'docs-filter-periode-bl2'));
+  const numBLFilter = (document.getElementById('docs-filter-numbl')?.value || '').trim().toLowerCase();
+  const filtered = all.filter(d => {
+    if (!filterDoc(d, 'docs-filter-labo-bl2', 'docs-filter-periode-bl2')) return false;
+    if (numBLFilter && !(d.fields?.ref||'').toLowerCase().includes(numBLFilter)) return false;
+    return true;
+  });
   if (cnt) cnt.textContent = filtered.length + (filtered.length < all.length ? '/'+all.length : '');
   if (!filtered.length) { el.innerHTML = '<div class="storage-empty">' + (all.length ? 'Aucun BL pour ces filtres' : 'Aucun BL') + '</div>'; return; }
   el.innerHTML = '';
