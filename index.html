@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z42';
+const APP_VERSION = '2.0.20260707z43';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11563,12 +11563,12 @@ async function extractBcVisionClaude(file) {
   for (let p = 1; p <= maxPages; p++) {
     showBcStatus(`🤖 Rendu page ${p}/${maxPages}…`);
     const page = await pdf.getPage(p);
-    const viewport = page.getViewport({scale: 1.5}); // résolution réduite (était 2.0)
+    const viewport = page.getViewport({scale: 2.0}); // haute résolution pour les manuscrits
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-    const jpeg = canvas.toDataURL('image/jpeg', 0.7).split(',')[1]; // qualité réduite (était 0.85)
+    const jpeg = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]; // meilleure qualité
     pageImages.push(jpeg);
   }
 
@@ -11594,19 +11594,27 @@ async function extractBcVisionClaude(file) {
   for (let bi = 0; bi < batches.length; bi++) {
     const imgs = batches[bi];
     showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
-    const prompt = `Ce document est un bon de livraison ou bon de commande pharmaceutique (Alliance Healthcare/Cencora, TEVA, BIOSYNEX, CERP, OCP ou autre).
+    const prompt = `Tu regardes un bon de commande pharmaceutique Alliance Healthcare / Cencora.
 
-Pour chaque ligne produit, extrais :
-- Le code CIP13 ou EAN-13 (13 chiffres, commence généralement par 3400 ou 3532)
-- Le libellé complet du produit
-- La quantité : 
-  * Sur un BON DE COMMANDE Alliance Healthcare : cherche dans la DERNIÈRE colonne (colonne 9 "Quantité") les chiffres écrits À LA MAIN (manuscrits, souvent en rouge ou bleu). Ignore les colonnes "Palier", "PFHT", "PPHT", "Remise%".
-  * Sur un BON DE LIVRAISON : prends la colonne "Livrée" ou "Qté livrée".
+Le tableau a ces colonnes dans l'ordre :
+1. CIP13 (code à 13 chiffres commençant par 3400...)
+2. Libellé du produit (nom complet du médicament)
+3. PFHT
+4. PPHT  
+5. Remise %
+6. Prix Remisé €
+7. Palier
+8. (vide ou autre)
+9. Quantité → c'est la DERNIÈRE colonne, les chiffres y sont écrits À LA MAIN au stylo
 
-N'inclus que les lignes où une quantité est présente. Si la quantité manuscrite n'est pas lisible, mets 0.
+Ta mission : pour chaque ligne du tableau, retourne :
+- "ean" = le code CIP13 de la colonne 1 (exactement 13 chiffres)
+- "designation" = le texte exact de la colonne 2 (le libellé complet)
+- "qte" = le chiffre manuscrit de la colonne 9 (dernier champ de la ligne, écrit à la main). Si aucun chiffre manuscrit visible → 0.
 
-Retourne UNIQUEMENT un JSON valide, sans backticks :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5}]`;
+Inclus UNIQUEMENT les lignes avec un CIP13 valide (13 chiffres).
+Retourne UNIQUEMENT un JSON valide, sans backticks, sans commentaires :
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5},{"ean":"3400930292914","designation":"MOUNJARO 5MG KWIKPEN 2,4ML 1","qte":0}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
