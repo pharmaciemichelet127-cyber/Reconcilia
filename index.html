@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z55';
+const APP_VERSION = '2.0.20260707z56';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11489,11 +11489,14 @@ async function enrichirLibellesClaude() {
 
     for (let i = 0; i < _bcItems.length; i += batchSize) {
       const batch = _bcItems.slice(i, i + batchSize);
-      const lines = batch.map((it, j) =>
-        (i+j+1) + '. CIP13=' + it.ean + ' | OCR="' + (it.designation !== '⚠ À COMPLÉTER' ? it.designation : '?') + '"'
-      ).join('\n');
+      const lines = batch.map((it, j) => {
+        const ocr = it.designation !== '⚠ À COMPLÉTER' ? it.designation.trim() : '';
+        // Si OCR trop court ou peu fiable (< 8 chars), ne pas l'envoyer — se fier au CIP13 seul
+        const ocrHint = ocr.length >= 8 ? ' | OCR="' + ocr + '"' : '';
+        return (i+j+1) + '. CIP13=' + it.ean + ocrHint;
+      }).join('\n');
 
-      const prompt = 'Tu es un expert en médicaments français. Pour chaque ligne, tu as un CIP13 (parfois avec un chiffre OCR erroné) et un libellé OCR (parfois corrompu). Retourne :\n- "ean" : le CIP13 CORRIGÉ si tu peux identifier le bon produit (sinon garde le même)\n- "designation" : le nom officiel exact et complet du médicament\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE_CORRIGE","designation":"NOM EXACT COMPLET"}]\n\nLignes :\n' + lines;
+      const prompt = 'Tu es pharmacologue expert France. Pour chaque ligne tu as un code CIP13 (identifiant officiel ANSM). Identifie le médicament par son CIP13 en priorité. Si un libellé OCR est fourni, il peut t\'aider mais peut être corrompu — le CIP13 prime toujours.\nRetourne :\n- "ean" : CIP13 corrigé si tu peux identifier le bon code (sinon garde le même)\n- "designation" : dénomination commerciale officielle COMPLÈTE (ex: NAABAK 4,9%, collyre en solution, QUVIVIQ 50 mg, comprimé...)\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE","designation":"NOM OFFICIEL COMPLET"}]\n\nLignes :\n' + lines;
 
       showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
