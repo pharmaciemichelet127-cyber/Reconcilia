@@ -3643,7 +3643,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z49';
+const APP_VERSION = '2.0.20260707z50';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11617,44 +11617,23 @@ async function extractBcVisionClaude(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: new Uint8Array(arrayBuffer)}).promise;
 
-  // Limiter à 2 pages max et résolution réduite pour rester sous la limite API (4.5MB)
-  const maxPages = Math.min(pdf.numPages, 2);
-  const pageImages = [];
+  // Traiter CHAQUE page séparément (1 image par appel) pour ne rater aucun produit
+  const totalPages = Math.min(pdf.numPages, 8);
 
-  for (let p = 1; p <= maxPages; p++) {
-    showBcStatus(`🤖 Rendu page ${p}/${maxPages}…`);
+  for (let p = 1; p <= totalPages; p++) {
+    showBcStatus(`🤖 Rendu page ${p}/${totalPages}…`);
     const page = await pdf.getPage(p);
-    const viewport = page.getViewport({scale: 2.0}); // haute résolution pour les manuscrits
+    const viewport = page.getViewport({scale: 2.0});
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-    const jpeg = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]; // meilleure qualité
-    pageImages.push(jpeg);
-  }
+    const jpeg = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 
-  // Si le PDF a plus de 2 pages, traiter aussi les pages suivantes par lot de 2
-  const batches = [pageImages];
-  if (pdf.numPages > 2) {
-    for (let start = 3; start <= Math.min(pdf.numPages, 7); start += 2) {
-      const batchImgs = [];
-      for (let p = start; p <= Math.min(start+1, pdf.numPages); p++) {
-        showBcStatus(`🤖 Rendu page ${p}/${pdf.numPages}…`);
-        const page = await pdf.getPage(p);
-        const viewport = page.getViewport({scale: 1.5});
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width; canvas.height = viewport.height;
-        await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-        batchImgs.push(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
-      }
-      batches.push(batchImgs);
-    }
-  }
-
-  // Envoyer chaque lot à Claude séparément
-  for (let bi = 0; bi < batches.length; bi++) {
-    const imgs = batches[bi];
-    showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
+    showBcStatus(`🤖 Analyse page ${p}/${totalPages}…`);
+    const imgs = [jpeg];
+    const bi = p - 1;
+    const batches = { length: totalPages };
     const prompt = `Tu analyses une page d'un bon de commande pharmaceutique (Alliance Healthcare, Cencora ou autre).
 
 Pour CHAQUE ligne produit visible (peu importe la section : LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, LES ESSENTIELLES, etc.) :
@@ -11689,10 +11668,10 @@ Retourne UNIQUEMENT un JSON valide, sans backticks :
         });
       }
     } catch(e) {
-      logActivity(`⚠ Vision IA lot ${bi+1} : ${e.message}`, 'warn');
+      logActivity(`⚠ Vision IA page ${p} : ${e.message}`, 'warn');
     }
-    // Pause entre les lots pour éviter le rate limit
-    if (bi < batches.length - 1) await new Promise(r => setTimeout(r, 2000));
+    // Pause entre les pages pour éviter le rate limit
+    if (p < totalPages) await new Promise(r => setTimeout(r, 1500));
   }
 
   if (_bcItems.length) logActivity(`🤖 Vision IA : ${_bcItems.length} EAN extraits de "${file.name}"`, 'ok');
