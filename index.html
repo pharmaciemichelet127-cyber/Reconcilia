@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z65';
+const APP_VERSION = '2.0.20260707z66';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9411,7 +9411,24 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
       toast(`✅ ${_bcItems.length} EAN-13 extraits de la commande ${cmd.fournisseur}`, 'success');
       logActivity(`🔍 Commande ${cmd.fournisseur} : ${_bcItems.length} EAN extraits`, 'ok');
     } else {
-      toast('Aucun EAN-13 trouvé. Les pages sont peut-être hors ligne — reconnectez OneDrive et réessayez.', 'warn');
+      // Aucun EAN trouvé depuis les pages → essayer le BL associé
+      if (cmd.blId) {
+        toast('📄 Pages sans EAN — utilisation du BL associé…', 'info');
+        await loadBcFromStore(cmd.blId);
+      } else {
+        // Chercher un BL du même fournisseur dans store.bl
+        const blMatch = store.bl.find(d =>
+          d.status === 'ok' &&
+          d.fields?.fournisseur &&
+          normalize(d.fields.fournisseur).includes(normalize(cmd.fournisseur).split(' ')[0])
+        );
+        if (blMatch) {
+          toast(`📄 BL trouvé pour ${cmd.fournisseur} — génération codes-barres…`, 'info');
+          await loadBcFromStore(blMatch.id);
+        } else {
+          toast(`Aucun EAN-13 trouvé. Ouvre l'onglet BL et clique sur 🔍 pour ${cmd.fournisseur}.`, 'warn');
+        }
+      }
     }
     return;
   }
