@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z53';
+const APP_VERSION = '2.0.20260707z54';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9325,8 +9325,9 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
         const items = JSON.parse(text);
         if (Array.isArray(items)) {
           items.forEach(it => {
-            if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-              _bcItems.push({ean:String(it.ean), designation:it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', qte:0, manuscrit:true});
+            if (it.ean && is13Digits(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
+              const eanValid2 = isValidEAN13(String(it.ean));
+              _bcItems.push({ean:String(it.ean), designation:it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', qte:0, manuscrit:true, eanInvalid:!eanValid2});
             }
           });
         }
@@ -11293,6 +11294,11 @@ function isValidEAN13(code) {
   return (10 - sum%10)%10 === d[12];
 }
 
+// Vérifie si c'est un code à 13 chiffres (même clé incorrecte) — pour les OCR imparfaits
+function is13Digits(code) {
+  return /^\d{13}$/.test(code);
+}
+
 function handleBcDrop(event) {
   const files = [...event.dataTransfer.files].filter(f => f.type==='application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
   if (!files.length) { toast('Veuillez déposer des fichiers PDF', 'warn'); return; }
@@ -11384,8 +11390,10 @@ function renderBcTable() {
 
       // EAN
       const tdEan = document.createElement('td');
-      tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:var(--ink2);vertical-align:middle;letter-spacing:1px;white-space:nowrap';
-      tdEan.textContent = item.ean;
+      const eanColor = item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
+      const eanTitle = item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier ce code"' : '';
+      tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:'+eanColor+';vertical-align:middle;letter-spacing:1px;white-space:nowrap';
+      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${item.eanInvalid?' ⚠':''}</span>`;
       tr.appendChild(tdEan);
 
       // Code-barres SVG — grand et aéré
@@ -11718,8 +11726,9 @@ Retourne UNIQUEMENT un JSON valide, sans backticks :
       const items = JSON.parse(text);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-            _bcItems.push({designation: it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', ean: String(it.ean), qte: 0, manuscrit: true});
+          if (it.ean && is13Digits(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
+            const eanValid = isValidEAN13(String(it.ean));
+            _bcItems.push({designation: it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', ean: String(it.ean), qte: 0, manuscrit: true, eanInvalid: !eanValid});
           }
         });
       }
