@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z54';
+const APP_VERSION = '2.0.20260707z55';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11299,6 +11299,27 @@ function is13Digits(code) {
   return /^\d{13}$/.test(code);
 }
 
+// Corrige la clé de contrôle EAN-13 (recalcule le dernier chiffre)
+// Utile quand l'OCR a mal lu le dernier chiffre
+function correctEAN13checkDigit(code) {
+  if (!/^\d{13}$/.test(code)) return null;
+  const d = code.slice(0,12).split('').map(Number);
+  const sum = d.reduce((acc, v, i) => acc + v * (i%2===0 ? 1 : 3), 0);
+  const correctCheck = (10 - sum%10)%10;
+  return code.slice(0,12) + correctCheck;
+}
+
+// Tente de corriger un EAN invalide en essayant la correction du dernier chiffre
+// et en cherchant si un seul chiffre parmi les 12 premiers est faux
+function tryFixEAN13(code) {
+  if (isValidEAN13(code)) return code;
+  if (!is13Digits(code)) return null;
+  // Essai 1 : corriger le dernier chiffre
+  const fixed = correctEAN13checkDigit(code);
+  if (fixed && fixed !== code) return fixed;
+  return code; // retourne tel quel
+}
+
 function handleBcDrop(event) {
   const files = [...event.dataTransfer.files].filter(f => f.type==='application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
   if (!files.length) { toast('Veuillez déposer des fichiers PDF', 'warn'); return; }
@@ -11428,7 +11449,9 @@ function renderBcTable() {
       // Générer le code-barres : large, haut, bien margé
       requestAnimationFrame(() => {
         try {
-          JsBarcode('#'+svgId, item.ean, {
+          // Utiliser l'EAN corrigé si disponible pour générer le code-barres
+          const eanForBarcode = item.eanInvalid ? (correctEAN13checkDigit(item.ean) || item.ean) : item.ean;
+          JsBarcode('#'+svgId, eanForBarcode, {
             format: 'EAN13',
             width: forPrint ? 2.2 : 2,
             height: forPrint ? 70 : 65,
@@ -11470,7 +11493,7 @@ async function enrichirLibellesClaude() {
         (i+j+1) + '. CIP13=' + it.ean + ' | OCR="' + (it.designation !== '⚠ À COMPLÉTER' ? it.designation : '?') + '"'
       ).join('\n');
 
-      const prompt = 'Tu es un expert en médicaments français. Pour chaque ligne, tu as un CIP13 et un libellé OCR (parfois corrompu). Retourne le nom officiel exact du médicament.\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE","designation":"NOM EXACT"}]\n\nLignes :\n' + lines;
+      const prompt = 'Tu es un expert en médicaments français. Pour chaque ligne, tu as un CIP13 (parfois avec un chiffre OCR erroné) et un libellé OCR (parfois corrompu). Retourne :\n- "ean" : le CIP13 CORRIGÉ si tu peux identifier le bon produit (sinon garde le même)\n- "designation" : le nom officiel exact et complet du médicament\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE_CORRIGE","designation":"NOM EXACT COMPLET"}]\n\nLignes :\n' + lines;
 
       showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
@@ -11490,10 +11513,27 @@ async function enrichirLibellesClaude() {
       const items = JSON.parse(jsonMatch[0]);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          const idx2 = _bcItems.findIndex(x => x.ean === String(it.ean));
+          // Chercher par EAN exact OU par EAN corrigé
+          let idx2 = _bcItems.findIndex(x => x.ean === String(it.ean));
+          if (idx2 < 0 && it.ean) {
+            // Claude a peut-être corrigé l'EAN — chercher le code original le plus proche
+            idx2 = _bcItems.findIndex(x => x.eanInvalid && tryFixEAN13(x.ean) === String(it.ean));
+          }
           if (idx2 >= 0 && it.designation && it.designation.trim() && it.designation !== '?') {
             _bcItems[idx2].designation = it.designation.trim();
             _bcItems[idx2].manuscrit = false;
+            // Mettre à jour l'EAN si Claude l'a corrigé
+            if (it.ean && String(it.ean) !== _bcItems[idx2].ean && isValidEAN13(String(it.ean))) {
+              _bcItems[idx2].ean = String(it.ean);
+              _bcItems[idx2].eanInvalid = false;
+            } else if (_bcItems[idx2].eanInvalid) {
+              // Essayer la correction automatique (dernier chiffre)
+              const autoFixed = correctEAN13checkDigit(_bcItems[idx2].ean);
+              if (autoFixed && isValidEAN13(autoFixed)) {
+                _bcItems[idx2].ean = autoFixed;
+                _bcItems[idx2].eanInvalid = false;
+              }
+            }
             enriched++;
           }
         });
