@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z44';
+const APP_VERSION = '2.0.20260707z45';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11404,8 +11404,9 @@ function renderBcTable() {
       if (forPrint) {
         tdQte.textContent = item.qte || '';
       } else {
+        const showVal = item.qte > 0 ? item.qte : '';
         const hl = item.manuscrit ? 'background:rgba(255,230,0,0.5);border-radius:6px;' : '';
-        tdQte.innerHTML = `<input type="number" min="0" value="${item.qte}" title="${item.manuscrit?'Quantité manuscrite — vérifier avant impression':''}" onchange="_bcItems[${idx}].qte=parseInt(this.value)||0;_bcItems[${idx}].manuscrit=false;this.style.background='';syncBcPrint()" style="border:none;background:transparent;width:70px;text-align:center;font-family:inherit;font-weight:800;font-size:22px;color:var(--ink);${hl}">`;
+        tdQte.innerHTML = `<input type="number" min="0" value="${showVal}" placeholder="—" title="Saisir la quantité" onchange="_bcItems[${idx}].qte=parseInt(this.value)||0;_bcItems[${idx}].manuscrit=false;this.style.background='';this.style.border='';syncBcPrint()" style="border:2px dashed var(--border);border-radius:6px;background:transparent;width:70px;text-align:center;font-family:inherit;font-weight:800;font-size:22px;color:var(--ink);${hl}">`;
         if (item.manuscrit) tdQte.style.background = 'rgba(255,230,0,0.3)';
       }
       tr.appendChild(tdQte);
@@ -11604,27 +11605,19 @@ async function extractBcVisionClaude(file) {
   for (let bi = 0; bi < batches.length; bi++) {
     const imgs = batches[bi];
     showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
-    const prompt = `Tu regardes un bon de commande pharmaceutique Alliance Healthcare / Cencora.
+    const prompt = `Bon de commande pharmaceutique Alliance Healthcare / Cencora.
 
-Le tableau a ces colonnes dans l'ordre :
-1. CIP13 (code à 13 chiffres commençant par 3400...)
-2. Libellé du produit (nom complet du médicament)
-3. PFHT
-4. PPHT  
-5. Remise %
-6. Prix Remisé €
-7. Palier
-8. (vide ou autre)
-9. Quantité → c'est la DERNIÈRE colonne, les chiffres y sont écrits À LA MAIN au stylo
+Colonnes du tableau : CIP13 | Libellé | PFHT | PPHT | Remise% | Prix remisé | Palier | Quantité (MANUSCRITE, dernière colonne).
 
-Ta mission : pour chaque ligne du tableau, retourne :
-- "ean" = le code CIP13 de la colonne 1 (exactement 13 chiffres)
-- "designation" = le texte exact de la colonne 2 (le libellé complet)
-- "qte" = le chiffre manuscrit de la colonne 9 (dernier champ de la ligne, écrit à la main). Si aucun chiffre manuscrit visible → 0.
+Instrictions :
+1. N'inclus QUE les lignes où un chiffre est écrit À LA MAIN dans la dernière colonne Quantité.
+2. Pour chaque ligne incluse, retourne :
+   - "ean" : CIP13 exact (13 chiffres, commence par 3400)
+   - "designation" : libellé EXACT du produit (colonne 2 uniquement, pas les prix ni chiffres)
+   - "qte" : TOUJOURS 0 (l'utilisateur saisira lui-même)
 
-Inclus UNIQUEMENT les lignes avec un CIP13 valide (13 chiffres).
-Retourne UNIQUEMENT un JSON valide, sans backticks, sans commentaires :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5},{"ean":"3400930292914","designation":"MOUNJARO 5MG KWIKPEN 2,4ML 1","qte":0}]`;
+Retourne UNIQUEMENT un JSON valide sans backticks :
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
