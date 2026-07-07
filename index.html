@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z67';
+const APP_VERSION = '2.0.20260707z69';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9297,7 +9297,16 @@ async function generateBcFromCommande(cmdId) {
   const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
   showPage('barcodes', bcBtn);
 
+  // Vider la zone et afficher le nom de la commande immédiatement
   _bcItems = [];
+  const bcWrapInit = document.getElementById('bc-table-wrap');
+  if (bcWrapInit) bcWrapInit.style.display = 'none';
+  const printAreaInit = document.getElementById('print-barcode-area');
+  if (printAreaInit) printAreaInit.style.display = 'none';
+  const btnPrintInit = document.getElementById('btn-print-barcodes');
+  if (btnPrintInit) btnPrintInit.style.display = 'none';
+
+  showBcStatus(`⏳ Chargement codes-barres pour ${cmd.fournisseur}…`);
   _bcTitle = (cmd.fournisseur || '') + (cmd.numero ? ' — Cmd N° ' + cmd.numero : '') + (cmd.dateDisplay ? ' · ' + cmd.dateDisplay : '');
 
   try {
@@ -9432,7 +9441,20 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
           toast(`📄 BL trouvé pour ${cmd.fournisseur} — génération codes-barres…`, 'info');
           await loadBcFromStore(blMatch.id);
         } else {
-          toast(`Aucun EAN-13 trouvé. Ouvre l'onglet BL et clique sur 🔍 pour ${cmd.fournisseur}.`, 'warn');
+          // Afficher un bouton pour aller directement au BL filtré
+          hideBcStatus();
+          const bcWrap = document.getElementById('bc-table-wrap');
+          if (bcWrap) {
+            bcWrap.style.display = '';
+            bcWrap.innerHTML = `<div style="padding:40px;text-align:center">
+              <div style="font-size:48px;margin-bottom:16px">🔍</div>
+              <div style="font-size:16px;font-weight:700;margin-bottom:8px">Aucun BL ${cmd.fournisseur} trouvé</div>
+              <div style="font-size:13px;color:var(--ink2);margin-bottom:20px">Le BL de cette commande n'est pas encore dans ReconcilIA.</div>
+              <button class="btn btn-primary" onclick="goToBLTab('${normalize(cmd.fournisseur).split(' ')[0]}')">
+                📦 Voir les BL ${cmd.fournisseur} →
+              </button>
+            </div>`;
+          }
         }
       }
     }
@@ -11725,6 +11747,15 @@ async function enregistrerCommeCommande() {
 
   toast(`✅ Commande "${fournisseur}" créée — ${_bcItems.length} produits`, 'success');
   logActivity(`📋 Commande créée depuis codes-barres : ${fournisseur} — ${_bcItems.length} produits`, 'ok');
+}
+
+function goToBLTab(fournisseurFilter) {
+  const blBtn = document.querySelector('.nav-tab[onclick*="\'bl\'"]');
+  showPage('bl', blBtn);
+  setTimeout(() => {
+    const input = document.getElementById('docs-filter-labo-bl2');
+    if (input) { input.value = fournisseurFilter; renderDocsBL(); }
+  }, 200);
 }
 
 function clearBarcodes() {
