@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z46';
+const APP_VERSION = '2.0.20260707z48';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9262,17 +9262,9 @@ async function generateBcFromCommande(cmdId) {
     showPage('barcodes', bcBtn);
     showBcStatus(`🤖 Analyse des ${cmd.pages.length} page(s) de la commande ${cmd.fournisseur}…`);
 
-    const prompt = `Ce document est un bon de commande pharmaceutique${cmd.fournisseur?' de '+cmd.fournisseur:' (Alliance Healthcare / Cencora ou autre)'}. 
-Extrais CHAQUE ligne produit visible avec :
-- Le code CIP13 (13 chiffres, colonne 1, commence par 3400...)
-- Le libellé du produit (colonne 2, nom complet du médicament)  
-- La quantité MANUSCRITE (colonne 9, dernière colonne "Quantité" - ce sont des chiffres écrits à la main en rouge ou noir, ignore les quantités imprimées comme "Palier")
-
-IMPORTANT : prends UNIQUEMENT les lignes où une quantité manuscrite est visible dans la dernière colonne. Ignore les lignes sans quantité écrite à la main.
-
+    const prompt = `Bon de commande pharmaceutique. Pour CHAQUE ligne produit avec un CIP13 (13 chiffres, commence par 3400...) : copie le LIBELLÉ EXACT lettre par lettre tel qu'imprimé. Ignore tous les prix et quantités. Mets "qte":0 partout.
 Retourne UNIQUEMENT un JSON valide sans backticks :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5}]
-Si plusieurs pages, liste TOUS les produits avec quantité manuscrite.`;
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0}]`;
 
     for (let i = 0; i < cmd.pages.length; i += 1) {
       const batch = cmd.pages.slice(i, i+1);
@@ -9332,7 +9324,7 @@ Si plusieurs pages, liste TOUS les produits avec quantité manuscrite.`;
         if (Array.isArray(items)) {
           items.forEach(it => {
             if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-              _bcItems.push({ean:String(it.ean), designation:it.designation||'—', qte:parseInt(it.qte)||0});
+              _bcItems.push({ean:String(it.ean), designation:it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', qte:0, manuscrit:true});
             }
           });
         }
@@ -11378,10 +11370,14 @@ function renderBcTable() {
       // Désignation — éditable
       const tdDes = document.createElement('td');
       tdDes.style.cssText = 'padding:18px 16px;vertical-align:middle;font-size:14px;font-weight:600;max-width:300px';
+      const isPlaceholder = item.designation === '⚠ À COMPLÉTER';
       if (forPrint) {
-        tdDes.textContent = item.designation;
+        tdDes.textContent = isPlaceholder ? '' : item.designation;
       } else {
-        tdDes.innerHTML = `<input value="${item.designation.replace(/"/g,'&quot;')}" onchange="_bcItems[${idx}].designation=this.value;syncBcPrint()" style="border:none;background:transparent;width:100%;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink)">`;
+        const desColor = isPlaceholder ? 'var(--warn)' : 'var(--ink)';
+        const desBg = isPlaceholder ? 'background:rgba(255,200,0,0.2);border-radius:6px;' : '';
+        tdDes.innerHTML = `<input value="${item.designation.replace(/"/g,'&quot;')}" onchange="_bcItems[${idx}].designation=this.value;this.style.color='var(--ink)';this.style.background='';syncBcPrint()" style="border:none;background:transparent;width:100%;font-family:inherit;font-size:14px;font-weight:600;color:${desColor};${desBg}" placeholder="Saisir le libellé">`;
+        if (isPlaceholder) tdDes.style.background = 'rgba(255,200,0,0.15)';
       }
       tr.appendChild(tdDes);
 
@@ -11605,21 +11601,15 @@ async function extractBcVisionClaude(file) {
   for (let bi = 0; bi < batches.length; bi++) {
     const imgs = batches[bi];
     showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
-    const prompt = `Tu analyses UNE PAGE d'un bon de commande pharmaceutique Alliance Healthcare / Cencora.
+    const prompt = `Tu analyses une page d'un bon de commande pharmaceutique (Alliance Healthcare, Cencora ou autre).
 
-Format du tableau sur cette page :
-- Colonne 1 : CIP13 (13 chiffres commençant par 3400...)
-- Colonne 2 : Libellé complet du produit (COPIE LE MOT POUR MOT, exactement comme écrit)
-- Colonnes 3-8 : prix/remises (ignore)
-- Dernière colonne "Quantité" : chiffre écrit à la main au stylo
+Pour CHAQUE ligne produit visible (peu importe la section : LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, LES ESSENTIELLES, etc.) :
+- Repère le code CIP13 (13 chiffres commençant par 3400...)
+- Copie le LIBELLÉ EXACT du produit, LETTRE PAR LETTRE, tel qu'il est imprimé. Ne change rien, ne résume pas, ne corrige pas.
+- Ignore toutes les colonnes de prix (PFHT, PPHT, Remise%, Prix remisé, Palier).
+- Mets "qte":0 pour toutes les lignes.
 
-RÈGLES STRICTES :
-1. N'inclus QUE les lignes où il y a UN CHIFFRE MANUSCRIT visible dans la dernière colonne.
-2. Pour le libellé : copie EXACTEMENT le texte imprimé de la colonne 2, caractère par caractère, sans modifier ni abréger.
-3. Pour qte : mets TOUJOURS 0.
-4. Inclus TOUTES les lignes avec chiffre manuscrit, même si le document a plusieurs sections (LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, etc.).
-
-Retourne UNIQUEMENT un JSON valide sans backticks ni commentaires :
+Retourne UNIQUEMENT un JSON valide, sans backticks :
 [{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0},{"ean":"3400938322446","designation":"AVAMYS 27,5µG/PULV NAS 120DOS1","qte":0}]`;
 
     const content = imgs.map(img => ({
@@ -11640,7 +11630,7 @@ Retourne UNIQUEMENT un JSON valide sans backticks ni commentaires :
       if (Array.isArray(items)) {
         items.forEach(it => {
           if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-            _bcItems.push({designation: it.designation||'—', ean: String(it.ean), qte: parseInt(it.qte)||0});
+            _bcItems.push({designation: it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', ean: String(it.ean), qte: 0, manuscrit: true});
           }
         });
       }
