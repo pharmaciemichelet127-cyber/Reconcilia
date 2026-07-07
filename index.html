@@ -1118,6 +1118,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
       <div style="font-weight:700;font-size:14px" id="bc-table-title">—</div>
       <div style="font-size:12px;color:var(--ink2)" id="bc-table-count"></div>
       <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm" onclick="enrichirLibellesClaude()" id="btn-enrich-libelles" title="Demander à Claude les libellés officiels par CIP13" style="border-color:var(--accent2);color:var(--accent2)">🔍 Enrichir libellés</button>
       <button class="btn btn-secondary btn-sm" onclick="clearBarcodes()">🗑 Effacer</button>
     </div>
     <div style="overflow-x:auto">
@@ -3642,7 +3643,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z48';
+const APP_VERSION = '2.0.20260707z49';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11444,6 +11445,59 @@ function syncBcPrint() {
   renderBcTable(); // Re-render complet pour sync
 }
 
+// Enrichir les libellés via Claude (lookup par CIP13)
+async function enrichirLibellesClaude() {
+  if (!_bcItems.length) return;
+  const btn = document.getElementById('btn-enrich-libelles');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Recherche…'; }
+  showBcStatus('🔍 Recherche des libellés officiels par CIP13…');
+
+  try {
+    // Envoyer les CIP13 par lots de 30
+    const batchSize = 30;
+    for (let i = 0; i < _bcItems.length; i += batchSize) {
+      const batch = _bcItems.slice(i, i + batchSize);
+      const cips = batch.map((it, j) => `${i+j+1}. ${it.ean}`).join('\n');
+
+      const prompt = `Tu es un expert en pharmacologie française. Pour chaque code CIP13 ci-dessous, donne le nom exact du médicament tel qu'il figure dans la base de données ANSM/Vidal (dénomination commerciale complète avec dosage et forme galénique).
+
+Format de réponse UNIQUEMENT un JSON valide sans backticks :
+[{"ean":"3400932935345","designation":"CLARADOL 500MG CAFÉINE CPR 16"},...]
+
+Codes CIP13 :
+${cips}`;
+
+      const res = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({model: MODEL, max_tokens: 4096, messages: [{role: 'user', content: prompt}]})
+      });
+      const data = await res.json();
+      const text = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+      const items = JSON.parse(text);
+      if (Array.isArray(items)) {
+        items.forEach(it => {
+          const idx = _bcItems.findIndex(x => x.ean === String(it.ean));
+          if (idx >= 0 && it.designation && it.designation.trim()) {
+            _bcItems[idx].designation = it.designation.trim();
+            _bcItems[idx].manuscrit = false;
+          }
+        });
+      }
+      if (i + batchSize < _bcItems.length) await new Promise(r => setTimeout(r, 1000));
+    }
+
+    hideBcStatus();
+    renderBcTable();
+    toast(`✅ Libellés enrichis pour ${_bcItems.length} produits`, 'success');
+  } catch(e) {
+    hideBcStatus();
+    toast('Erreur enrichissement : ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Enrichir libellés'; }
+  }
+}
+
 function clearBarcodes() {
   _bcItems = []; _bcTitle = '';
   document.getElementById('bc-table-wrap').style.display = 'none';
@@ -11758,7 +11812,7 @@ async function extractBcFromBase64(base64, filename) {
     }
 
     if (!_bcItems.find(it=>it.ean===ean)) {
-      _bcItems.push({designation, ean, qte, manuscrit});
+      _bcItems.push({designation, ean, qte: 0, manuscrit: false});
     }
   }
 
