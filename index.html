@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z58';
+const APP_VERSION = '2.0.20260707z59';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11431,8 +11431,9 @@ function renderBcTable() {
       const eanColor = item.isCip7 ? '#7c3aed' : item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
       const eanTitle = item.isCip7 ? 'title="Code CIP7 CERP — cliquer 🔍 Enrichir libellés pour obtenir l\'EAN-13"' : item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier"' : '';
       tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:'+eanColor+';vertical-align:middle;letter-spacing:1px;white-space:nowrap';
+      const provisoire = item.isCip7 ? cip7ToEAN13(item.ean) : null;
       const eanSuffix = item.isCip7 ? ' 🔄' : item.eanInvalid ? ' ⚠' : '';
-      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}</span>`;
+      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}${provisoire ? '<div style="font-size:10px;color:var(--ink2);margin-top:2px">→ '+provisoire+' (prov.)</div>' : ''}</span>`;
       tr.appendChild(tdEan);
 
       // Code-barres SVG — grand et aéré
@@ -11467,8 +11468,13 @@ function renderBcTable() {
       // Générer le code-barres : large, haut, bien margé
       requestAnimationFrame(() => {
         try {
-          // Utiliser l'EAN corrigé si disponible pour générer le code-barres
-          const eanForBarcode = item.eanInvalid ? (correctEAN13checkDigit(item.ean) || item.ean) : item.ean;
+          // Utiliser EAN corrigé si disponible, ou convertir CIP7→EAN13 provisoire
+          let eanForBarcode = item.ean;
+          if (item.isCip7) {
+            eanForBarcode = cip7ToEAN13(item.ean) || item.ean;
+          } else if (item.eanInvalid) {
+            eanForBarcode = correctEAN13checkDigit(item.ean) || item.ean;
+          }
           JsBarcode('#'+svgId, eanForBarcode, {
             format: 'EAN13',
             width: forPrint ? 2.2 : 2,
