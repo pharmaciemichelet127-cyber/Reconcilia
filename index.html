@@ -3643,7 +3643,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z50';
+const APP_VERSION = '2.0.20260707z51';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11308,22 +11308,21 @@ function handleBcFiles(fileList) {
   // Traiter chaque PDF séquentiellement
   files.reduce((p, file) => p.then(() => extractBcFromPDF(file)), Promise.resolve())
     .then(async () => {
-      if (_bcItems.length === 0) {
-        // Fallback : PDF image (scanné) → vision Claude
-        showBcStatus('🤖 PDF scanné détecté — analyse visuelle par IA…');
-        for (const file of files) {
-          await extractBcVisionClaude(file);
-        }
-        hideBcStatus();
-        if (_bcItems.length === 0) {
-          toast('Aucun EAN-13 trouvé (ni par pdf.js, ni par vision IA)', 'warn');
-          return;
-        }
-      } else {
-        hideBcStatus();
+      const foundByPdfJs = _bcItems.length;
+      // Toujours appeler la vision pour compléter (même si pdf.js a trouvé des items)
+      // pdf.js peut rater des lignes même quand il y a une couche texte
+      showBcStatus(`🤖 Analyse visuelle pour compléter (${foundByPdfJs} déjà trouvés)…`);
+      for (const file of files) {
+        await extractBcVisionClaude(file);
       }
+      hideBcStatus();
+      if (_bcItems.length === 0) {
+        toast('Aucun EAN-13 trouvé', 'warn');
+        return;
+      }
+      const added = _bcItems.length - foundByPdfJs;
       renderBcTable();
-      toast(`✅ ${_bcItems.length} code(s) EAN-13 extrait(s)`, 'success');
+      toast(`✅ ${_bcItems.length} EAN-13 extraits${added > 0 ? ` (+${added} via vision)` : ''}`, 'success');
     })
     .catch(e => {
       hideBcStatus();
