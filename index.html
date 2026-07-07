@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z60';
+const APP_VERSION = '2.0.20260707z61';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11429,11 +11429,11 @@ function renderBcTable() {
       // EAN
       const tdEan = document.createElement('td');
       const eanColor = item.isCip7 ? '#7c3aed' : item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
-      const eanTitle = item.isCip7 ? 'title="Code CIP7 CERP — cliquer 🔍 Enrichir libellés pour obtenir l\'EAN-13"' : item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier"' : '';
+      const eanTitle = item.isCip7 ? 'title="Code CIP7 CERP — EAN-13 calculé automatiquement"' : item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier"' : '';
       tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:'+eanColor+';vertical-align:middle;letter-spacing:1px;white-space:nowrap';
-      const provisoire = item.isCip7 ? cip7ToEAN13(item.ean) : null;
-      const eanSuffix = item.isCip7 ? ' 🔄' : item.eanInvalid ? ' ⚠' : '';
-      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}${provisoire ? '<div style="font-size:10px;color:var(--ink2);margin-top:2px">→ '+provisoire+' (prov.)</div>' : ''}</span>`;
+      const cip7Ean = item.isCip7 ? cip7ToEAN13(item.ean) : null;
+      const eanSuffix = item.eanInvalid && !item.isCip7 ? ' ⚠' : '';
+      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}${cip7Ean ? '<div style="font-size:11px;color:var(--ink2);margin-top:2px;letter-spacing:1px">→ '+cip7Ean+'</div>' : ''}</span>`;
       tr.appendChild(tdEan);
 
       // Code-barres SVG — grand et aéré
