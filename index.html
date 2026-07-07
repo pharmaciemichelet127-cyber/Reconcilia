@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260706z41';
+const APP_VERSION = '2.0.20260707z42';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9262,10 +9262,17 @@ async function generateBcFromCommande(cmdId) {
     showPage('barcodes', bcBtn);
     showBcStatus(`🤖 Analyse des ${cmd.pages.length} page(s) de la commande ${cmd.fournisseur}…`);
 
-    const prompt = `Ce document est un bon de commande pharmaceutique${cmd.fournisseur?' de '+cmd.fournisseur:''}. Extrais TOUS les codes EAN-13 (13 chiffres) présents, avec la désignation du produit et la quantité commandée.
+    const prompt = `Ce document est un bon de commande pharmaceutique${cmd.fournisseur?' de '+cmd.fournisseur:' (Alliance Healthcare / Cencora ou autre)'}. 
+Extrais CHAQUE ligne produit visible avec :
+- Le code CIP13 (13 chiffres, colonne 1, commence par 3400...)
+- Le libellé du produit (colonne 2, nom complet du médicament)  
+- La quantité MANUSCRITE (colonne 9, dernière colonne "Quantité" - ce sont des chiffres écrits à la main en rouge ou noir, ignore les quantités imprimées comme "Palier")
+
+IMPORTANT : prends UNIQUEMENT les lignes où une quantité manuscrite est visible dans la dernière colonne. Ignore les lignes sans quantité écrite à la main.
+
 Retourne UNIQUEMENT un JSON valide sans backticks :
-[{"ean":"3400935362080","designation":"NOM PRODUIT","qte":6}]
-Codes à 13 chiffres uniquement. Si plusieurs produits, liste-les tous.`;
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5}]
+Si plusieurs pages, liste TOUS les produits avec quantité manuscrite.`;
 
     for (let i = 0; i < cmd.pages.length; i += 2) {
       const batch = cmd.pages.slice(i, i+2);
@@ -11587,10 +11594,19 @@ async function extractBcVisionClaude(file) {
   for (let bi = 0; bi < batches.length; bi++) {
     const imgs = batches[bi];
     showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
-    const prompt = `Ce document est un bon de livraison pharmaceutique (BIOSYNEX ou autre). Extrais TOUS les codes EAN-13 visibles (13 chiffres, format "EAN :XXXXXXXXXXXXX"), avec leur désignation et la quantité (colonne "Qté").
+    const prompt = `Ce document est un bon de livraison ou bon de commande pharmaceutique (Alliance Healthcare/Cencora, TEVA, BIOSYNEX, CERP, OCP ou autre).
+
+Pour chaque ligne produit, extrais :
+- Le code CIP13 ou EAN-13 (13 chiffres, commence généralement par 3400 ou 3532)
+- Le libellé complet du produit
+- La quantité : 
+  * Sur un BON DE COMMANDE Alliance Healthcare : cherche dans la DERNIÈRE colonne (colonne 9 "Quantité") les chiffres écrits À LA MAIN (manuscrits, souvent en rouge ou bleu). Ignore les colonnes "Palier", "PFHT", "PPHT", "Remise%".
+  * Sur un BON DE LIVRAISON : prends la colonne "Livrée" ou "Qté livrée".
+
+N'inclus que les lignes où une quantité est présente. Si la quantité manuscrite n'est pas lisible, mets 0.
+
 Retourne UNIQUEMENT un JSON valide, sans backticks :
-[{"ean":"3532678588346","designation":"PLV COMPTOIR PLEXI LOGO BIOSYNEX","qte":1}]
-Si plusieurs produits, liste-les tous. Ignore les lignes sans EAN.`;
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
