@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z64';
+const APP_VERSION = '2.0.20260707z65';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9313,6 +9313,22 @@ async function generateBcFromCommande(cmdId) {
 
   // Cas 2 : pages scannées → extraction IA
   if (cmd.pages?.length) {
+    // Vérifier si au moins une page a son contenu disponible
+    const pagesWithContent = cmd.pages.filter(p => 
+      (typeof p === 'string' && p.length > 100) || 
+      (typeof p === 'object' && (p.base64 || p.odUrl))
+    );
+
+    if (pagesWithContent.length === 0) {
+      // Pages vides (base64 strippé) → essayer le BL associé
+      if (cmd.blId) {
+        toast('📄 Pages non disponibles — utilisation du BL associé…', 'info');
+        await loadBcFromStore(cmd.blId);
+        return;
+      }
+      toast('Les pages de cette commande ne sont plus disponibles. Ouvre l\'onglet BL et clique sur 🔍 pour générer les codes-barres.', 'warn');
+      return;
+    }
     const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
     showPage('barcodes', bcBtn);
     showBcStatus(`🤖 Analyse des ${cmd.pages.length} page(s) de la commande ${cmd.fournisseur}…`);
