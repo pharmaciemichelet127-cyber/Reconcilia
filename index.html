@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z45';
+const APP_VERSION = '2.0.20260707z46';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9274,8 +9274,8 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
 [{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":5}]
 Si plusieurs pages, liste TOUS les produits avec quantité manuscrite.`;
 
-    for (let i = 0; i < cmd.pages.length; i += 2) {
-      const batch = cmd.pages.slice(i, i+2);
+    for (let i = 0; i < cmd.pages.length; i += 1) {
+      const batch = cmd.pages.slice(i, i+1);
       showBcStatus(`🤖 Analyse page ${i+1}${batch.length>1?'-'+(i+2):''} / ${cmd.pages.length}…`);
 
       // Récupérer le base64 de chaque page (objet {base64, name, type, odUrl})
@@ -9323,7 +9323,7 @@ Si plusieurs pages, liste TOUS les produits avec quantité manuscrite.`;
         const res = await fetch('/api/claude', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({model:MODEL, max_tokens:1000, messages:[{role:'user', content}]})
+          body: JSON.stringify({model:MODEL, max_tokens:4096, messages:[{role:'user', content}]})
         });
         if (!res.ok) { logActivity(`⚠ API ${res.status} page ${i+1}`, 'warn'); continue; }
         const data = await res.json();
@@ -11605,19 +11605,22 @@ async function extractBcVisionClaude(file) {
   for (let bi = 0; bi < batches.length; bi++) {
     const imgs = batches[bi];
     showBcStatus(`🤖 Analyse IA — lot ${bi+1}/${batches.length}…`);
-    const prompt = `Bon de commande pharmaceutique Alliance Healthcare / Cencora.
+    const prompt = `Tu analyses UNE PAGE d'un bon de commande pharmaceutique Alliance Healthcare / Cencora.
 
-Colonnes du tableau : CIP13 | Libellé | PFHT | PPHT | Remise% | Prix remisé | Palier | Quantité (MANUSCRITE, dernière colonne).
+Format du tableau sur cette page :
+- Colonne 1 : CIP13 (13 chiffres commençant par 3400...)
+- Colonne 2 : Libellé complet du produit (COPIE LE MOT POUR MOT, exactement comme écrit)
+- Colonnes 3-8 : prix/remises (ignore)
+- Dernière colonne "Quantité" : chiffre écrit à la main au stylo
 
-Instrictions :
-1. N'inclus QUE les lignes où un chiffre est écrit À LA MAIN dans la dernière colonne Quantité.
-2. Pour chaque ligne incluse, retourne :
-   - "ean" : CIP13 exact (13 chiffres, commence par 3400)
-   - "designation" : libellé EXACT du produit (colonne 2 uniquement, pas les prix ni chiffres)
-   - "qte" : TOUJOURS 0 (l'utilisateur saisira lui-même)
+RÈGLES STRICTES :
+1. N'inclus QUE les lignes où il y a UN CHIFFRE MANUSCRIT visible dans la dernière colonne.
+2. Pour le libellé : copie EXACTEMENT le texte imprimé de la colonne 2, caractère par caractère, sans modifier ni abréger.
+3. Pour qte : mets TOUJOURS 0.
+4. Inclus TOUTES les lignes avec chiffre manuscrit, même si le document a plusieurs sections (LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, etc.).
 
-Retourne UNIQUEMENT un JSON valide sans backticks :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0}]`;
+Retourne UNIQUEMENT un JSON valide sans backticks ni commentaires :
+[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0},{"ean":"3400938322446","designation":"AVAMYS 27,5µG/PULV NAS 120DOS1","qte":0}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
@@ -11628,7 +11631,7 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({model: MODEL, max_tokens: 1000, messages: [{role: 'user', content}]})
+        body: JSON.stringify({model: MODEL, max_tokens: 4096, messages: [{role: 'user', content}]})
       });
       if (!res.ok) { logActivity(`⚠ Vision IA HTTP ${res.status}`, 'warn'); continue; }
       const data = await res.json();
