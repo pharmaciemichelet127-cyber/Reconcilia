@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReconcilIA — Codes-barres</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<style>
+  :root{
+    --brand:#C2532E;
+    --brand-dark:#9E3F20;
+    --ink:#1F1B18;
+    --muted:#7A6F68;
+    --line:#E4DCD6;
+    --bg:#FAF7F4;
+    --card:#FFFFFF;
+    --warn-bg:#FFF3D6;
+    --warn-bd:#E8A825;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.45}
+
+  header.app{background:var(--card);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;padding:14px 20px}
+  .logo{width:36px;height:36px;border-radius:9px;background:var(--brand);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
+  header.app h1{font-size:17px;font-weight:650}
+  header.app .tab{margin-left:auto;font-size:13px;color:var(--muted);
+    border:1px solid var(--line);border-radius:999px;padding:4px 12px}
+
+  main{max-width:900px;margin:0 auto;padding:24px 16px 60px}
+
+  .dropzone{border:2px dashed var(--line);border-radius:14px;background:var(--card);
+    padding:36px 20px;text-align:center;cursor:pointer;transition:border-color .15s, background .15s;display:block}
+  .dropzone.drag{border-color:var(--brand);background:#FFF4EF}
+  .dropzone .big{font-size:16px;font-weight:600;margin-bottom:4px}
+  .dropzone .small{font-size:13px;color:var(--muted)}
+  .dropzone input{display:none}
+
+  .status{margin:14px 2px;font-size:13px;color:var(--muted)}
+  .status.err{color:#B3261E}
+
+  .banner{background:var(--warn-bg);border:1px solid var(--warn-bd);border-radius:10px;
+    padding:10px 14px;font-size:13px;margin:12px 0;display:none}
+
+  .actions{display:flex;gap:10px;margin:18px 0;flex-wrap:wrap}
+  button{font:inherit;border:none;border-radius:10px;padding:11px 18px;cursor:pointer;font-weight:600}
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:active{background:var(--brand-dark)}
+  .btn-ghost{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+  button:disabled{opacity:.4;cursor:default}
+
+  .doc-title{font-size:14px;font-weight:600;margin:10px 2px 8px}
+
+  table{width:100%;border-collapse:collapse;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th{background:#F1EAE4;font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--muted);text-align:left;padding:10px 12px}
+  td{border-top:1px solid var(--line);padding:10px 12px;font-size:14px;vertical-align:middle}
+  td.ean{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:nowrap}
+  td.qty input, td.des input{font:inherit;width:100%;border:1px solid transparent;border-radius:6px;
+    padding:4px 6px;background:transparent}
+  td.qty input{width:64px;text-align:center;font-weight:700;font-size:16px}
+  td.qty input.verify{background:var(--warn-bg);border-color:var(--warn-bd)}
+  td.qty input:focus, td.des input:focus{border-color:var(--brand);outline:none;background:#fff}
+  td.bc svg{display:block;max-width:200px;height:auto}
+  tr.delrow td{opacity:.35;text-decoration:line-through}
+  td .rowdel{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:2px 6px}
+
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+  /* ---------- IMPRESSION ---------- */
+  @media print{
+    header.app,.dropzone,.actions,.status,.hint,.banner,.no-print,td .rowdel{display:none !important}
+    tr.delrow{display:none !important}
+    body{background:#fff}
+    main{max-width:none;padding:0}
+    table{border-radius:0}
+    td,th{padding:6px 8px}
+    td.qty input.verify{background:transparent;border-color:transparent}
+    .doc-title{margin-top:0}
+    tr{page-break-inside:avoid}
+    th:last-child, td:last-child{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="logo">R</div>
+  <h1>ReconcilIA</h1>
+  <span class="tab">Codes-barres</span>
+</header>
+
+<main>
+  <label class="dropzone" id="dz">
+    <input type="file" id="fileInput" accept="application/pdf" multiple>
+    <div class="big">Déposer un bon de livraison ou de commande (PDF)</div>
+    <div class="small">ou toucher ici pour choisir un fichier</div>
+  </label>
+
+  <div class="status" id="status"></div>
+  <div class="banner" id="banner">
+    ⚠️ Document scanné avec quantités manuscrites : les quantités surlignées en jaune sont
+    une lecture approximative — <b>vérifiez-les</b> avant impression (touchez la cellule pour corriger).
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="printBtn" disabled onclick="window.print()">🖨️ Imprimer le PDF</button>
+    <button class="btn-ghost no-print" id="clearBtn" disabled>Effacer</button>
+  </div>
+
+  <div id="results"></div>
+  <p class="hint" id="hint" style="display:none">
+    Astuce : désignations et quantités sont modifiables avant impression. La croix ✕ retire une ligne.
+  </p>
+</main>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const dz = document.getElementById("dz");
+const fileInput = document.getElementById("fileInput");
+const statusEl = document.getElementById("status");
+const results = document.getElementById("results");
+const printBtn = document.getElementById("printBtn");
+const clearBtn = document.getElementById("clearBtn");
+const banner = document.getElementById("banner");
+const hint = document.getElementById("hint");
+
+/* ---------- Validation EAN-13 (clé de contrôle) ---------- */
+function isValidEan13(s){
+  if(!/^\d{13}$/.test(s)) return false;
+  let sum = 0;
+  for(let i = 0; i < 12; i++) sum += (+s[i]) * (i % 2 === 0 ? 1 : 3);
+  return (10 - (sum % 10)) % 10 === +s[12];
+}
+
+/* ---------- Normalisation des quantités manuscrites OCRisées ---------- */
+function cleanHandwrittenQty(s){
+  const map = {"o":"0","O":"0","ô":"0","D":"0","p":"0","a":"0","â":"0","q":"0",
+               "l":"1","I":"1","!":"1","i":"1","/":"1",
+               "z":"2","Z":"2","§":"5","S":"5","s":"5","A":"4","L":"4","b":"6","G":"6"};
+  let t = "";
+  for(const ch of s) t += (map[ch] !== undefined ? map[ch] : ch);
+  const digits = t.replace(/\D/g, "");
+  if(!digits) return "";
+  const n = parseInt(digits, 10);
+  return (n >= 1 && n <= 9999) ? String(n) : "";
+}
+
+/* ---------- Regroupe les items pdf.js en lignes par coordonnée Y ---------- */
+function collectItems(items){
+  const out = [];
+  for(const it of items){
+    if(!it.str.trim()) continue;
+    out.push({x: it.transform[4], y: it.transform[5], str: it.str.trim()});
+  }
+  return out;
+}
+function groupLines(all){
+  const rows = [];
+  for(const it of all){
+    let row = rows.find(r => Math.abs(r.y - it.y) < 3.5);
+    if(!row){ row = {y: it.y, items: []}; rows.push(row); }
+    row.items.push(it);
+  }
+  rows.sort((a,b) => b.y - a.y);
+  rows.forEach(r => r.items.sort((a,b) => a.x - b.x));
+  return rows;
+}
+
+/* ---------- Extraction des produits d'une page ---------- */
+function extractProducts(all, pageWidth){
+  const rows = groupLines(all);
+  const upper = s => s.toUpperCase();
+
+  /* Repères de colonnes via les en-têtes (tolérant aux erreurs OCR) */
+  let qtyLivX = null;        // TEVA : "QUANTITES LIVREES"
+  let qtyColX = null;        // Cencora & co : "Quantité" (OCR : Ouontlta…)
+  let desStopX = null;       // fin de la zone libellé : colonne PFHT ou REFERENCE
+  for(const it of all){
+    const t = upper(it.str);
+    if(t.includes("LIVREES") || t.includes("LIVRÉES")) qtyLivX = it.x;
+    if(/^[OQ0]U[OA]NTT?[IL1]T|UANTIT/.test(t)){
+      if(qtyColX === null || it.x > qtyColX) qtyColX = it.x;
+    }
+    if(/^(PFHT|REFERENCE|RÉFÉRENCE|REF\.)/.test(t) && it.x > pageWidth*0.25){
+      if(desStopX === null || it.x < desStopX) desStopX = it.x;
+    }
+  }
+
+  const products = [];
+  for(const r of rows){
+    const eanIdx = r.items.findIndex(it => isValidEan13(it.str.replace(/\s/g,"")));
+    if(eanIdx === -1) continue;
+    const eanItem = r.items[eanIdx];
+    const ean = eanItem.str.replace(/\s/g,"");
+
+    /* Libellé : tokens après l'EAN, dans la zone libellé */
+    const desParts = [];
+    for(let i = eanIdx + 1; i < r.items.length; i++){
+      const it = r.items[i], s = it.str;
+      if(desStopX !== null && it.x >= desStopX - 4) break;        // colonne prix atteinte
+      if(desStopX === null && it.x > pageWidth * 0.5) break;      // repli : moitié de page
+      if(/^\d+[.,]\d{2}$/.test(s)) break;                          // prix
+      if(/^\d{5,}$/.test(s)) break;                                // référence longue
+      desParts.push(s);
+    }
+    const designation = desParts.join(" ").trim() || "(désignation à saisir)";
+
+    products.push({ean, designation, y: r.y, items: r.items, qty: "", verify: false});
+  }
+  if(products.length === 0) return products;
+
+  /* ---------- Quantités ---------- */
+  if(qtyColX !== null){
+    /* Mode "colonne Quantité" (ex. Cencora/Alliance) : dernière colonne,
+       souvent manuscrite sur les scans. On ne garde QUE les lignes renseignées. */
+    const zoneMin = qtyColX - 38, zoneMax = qtyColX + 58;
+    const toks = all.filter(it =>
+      it.x >= zoneMin && it.x <= zoneMax &&
+      !/^[OQ0]U[OA]NT|UANTIT/i.test(it.str) &&
+      cleanHandwrittenQty(it.str) !== "");
+    /* Chaque token est attribué au produit le plus proche verticalement */
+    for(const tk of toks){
+      let best = null, bd = Infinity;
+      for(const p of products){
+        const d = Math.abs(tk.y - p.y);
+        if(d < bd){ bd = d; best = p; }
+      }
+      if(best && bd < 10 && best.qty === ""){
+        best.qty = cleanHandwrittenQty(tk.str);
+        best.verify = true;
+      }
+    }
+    return products.filter(p => p.qty !== "");
+  }
+
+  if(qtyLivX !== null){
+    /* Mode TEVA : colonne "QUANTITES LIVREES" repérée par son en-tête */
+    for(const p of products){
+      const nums = p.items.filter(it => /^\d{1,4}$/.test(it.str));
+      let best = null, bd = Infinity;
+      for(const n of nums){
+        const d = Math.abs(n.x - qtyLivX);
+        if(d < bd){ bd = d; best = n; }
+      }
+      p.qty = (best && bd < 60) ? best.str : "1";
+    }
+    return products;
+  }
+
+  /* Repli générique : dernier petit nombre de la ligne */
+  for(const p of products){
+    const nums = p.items.filter(it => /^\d{1,4}$/.test(it.str));
+    p.qty = nums.length ? nums[nums.length-1].str : "1";
+  }
+  return products;
+}
+
+/* ---------- Rendu ---------- */
+let bcCounter = 0;
+function renderDoc(fileName, docNum, products){
+  const section = document.createElement("section");
+  const title = document.createElement("div");
+  title.className = "doc-title";
+  title.textContent = docNum ? `Bordereau N° ${docNum}` : fileName;
+  section.appendChild(title);
+
+  const table = document.createElement("table");
+  table.innerHTML = `<thead><tr>
+      <th style="width:32%">Désignation</th>
+      <th>Code EAN</th>
+      <th style="width:28%">Code-barres</th>
+      <th style="width:80px">Qté</th>
+      <th style="width:36px"></th>
+    </tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  for(const p of products){
+    const id = "bc" + (++bcCounter);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="des"><input></td>
+      <td class="ean">${p.ean}</td>
+      <td class="bc"><svg id="${id}"></svg></td>
+      <td class="qty"><input inputmode="numeric"></td>
+      <td><button class="rowdel" title="Retirer la ligne">✕</button></td>`;
+    tr.querySelector("td.des input").value = p.designation;
+    const qi = tr.querySelector("td.qty input");
+    qi.value = p.qty;
+    if(p.verify) qi.classList.add("verify");
+    qi.addEventListener("input", () => qi.classList.remove("verify"));
+    tr.querySelector(".rowdel").addEventListener("click", () => tr.classList.toggle("delrow"));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  section.appendChild(table);
+  results.appendChild(section);
+
+  let i = bcCounter - products.length;
+  for(const p of products){
+    i++;
+    try{
+      JsBarcode("#bc" + i, p.ean, {format:"EAN13", height:48, fontSize:13, margin:4});
+    }catch(e){ console.error(e); }
+  }
+}
+
+/* ---------- Traitement d'un fichier PDF ---------- */
+async function handleFiles(files){
+  for(const file of files){
+    if(file.type !== "application/pdf"){ continue; }
+    statusEl.textContent = "Lecture de « " + file.name + " »…";
+    statusEl.classList.remove("err");
+    try{
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+      let allProducts = [], docNum = null, anyVerify = false;
+      for(let p = 1; p <= pdf.numPages; p++){
+        const page = await pdf.getPage(p);
+        const vp = page.getViewport({scale: 1});
+        const content = await page.getTextContent();
+        const all = collectItems(content.items);
+        if(!docNum){
+          const flat = all.map(i => i.str).join(" ");
+          const m = flat.match(/LIVRAISON\s*N[°O]?\s*(\d+)/i);
+          if(m) docNum = m[1];
+        }
+        const prods = extractProducts(all, vp.width);
+        if(prods.some(x => x.verify)) anyVerify = true;
+        allProducts = allProducts.concat(prods);
+      }
+      if(allProducts.length === 0){
+        statusEl.textContent = "Aucune ligne exploitable dans « " + file.name +
+          " » (aucun EAN valide, ou aucune quantité renseignée).";
+        statusEl.classList.add("err");
+      } else {
+        statusEl.textContent = allProducts.length + " produit(s) extrait(s) de « " + file.name + " ».";
+        renderDoc(file.name, docNum, allProducts);
+        if(anyVerify) banner.style.display = "block";
+        printBtn.disabled = false;
+        clearBtn.disabled = false;
+        hint.style.display = "block";
+      }
+    }catch(e){
+      console.error(e);
+      statusEl.textContent = "Impossible de lire « " + file.name + " » : " + e.message;
+      statusEl.classList.add("err");
+    }
+  }
+  fileInput.value = "";
+}
+
+fileInput.addEventListener("change", e => handleFiles(e.target.files));
+["dragover","dragenter"].forEach(ev => dz.addEventListener(ev, e => {e.preventDefault(); dz.classList.add("drag");}));
+["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => {e.preventDefault(); dz.classList.remove("drag");}));
+dz.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+
+clearBtn.addEventListener("click", () => {
+  results.innerHTML = ""; statusEl.textContent = "";
+  printBtn.disabled = true; clearBtn.disabled = true;
+  hint.style.display = "none"; banner.style.display = "none";
+});
+</script>
+</body>
+</html>
