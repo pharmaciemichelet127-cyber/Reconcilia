@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z66';
+const APP_VERSION = '2.0.20260707z67';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9291,10 +9291,16 @@ function _renderMonthHeaderFAC(key, docs, collapsed) {
 // Générer codes-barres depuis une commande (pour saisie LGPI)
 async function generateBcFromCommande(cmdId) {
   const cmd = commandesList.find(c => c.id === cmdId);
-  if (!cmd) return;
+  if (!cmd) { toast('Commande introuvable', 'error'); return; }
+
+  // Basculer IMMÉDIATEMENT vers l'onglet Codes-barres
+  const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
+  showPage('barcodes', bcBtn);
 
   _bcItems = [];
   _bcTitle = (cmd.fournisseur || '') + (cmd.numero ? ' — Cmd N° ' + cmd.numero : '') + (cmd.dateDisplay ? ' · ' + cmd.dateDisplay : '');
+
+  try {
 
   // Cas 1 : produits déjà extraits (EAN disponibles)
   if (cmd.produits?.length) {
@@ -9434,6 +9440,11 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
   }
 
   toast('Cette commande n\'a ni produits EAN ni pages scannées', 'warn');
+  } catch(e) {
+    hideBcStatus();
+    logActivity('⚠ Codes-barres commande : ' + e.message, 'warn');
+    toast('Erreur : ' + e.message, 'error');
+  }
 }
 
 // Visualiser un document BL/Facture depuis son docId dans store
