@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z63';
+const APP_VERSION = '2.0.20260707z64';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -4929,6 +4929,10 @@ async function syncRootFolder(token) {
     let delay = 0;
     for (const file of files) {
       const fn = normalize(file.name);
+      // Bloquer les fichiers déjà marqués comme trop lourds
+      if (rejectedIds.has(file.id) || rejectedIds.has('name:' + file.name)) {
+        continue; // silencieux — plus de message à chaque sync
+      }
       // Doublon par odId OU par nom de fichier dans tous les stores
       const fn2 = normalize(file.name).replace(/\s+/g,'');
       // Détection doublon : même odId OU même nom (normalisé, sans espaces) dans BL, FAC, queue ou historique
@@ -5089,8 +5093,15 @@ async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
     if (b64SizeMB > 4) {
       doc.status = 'warn';
       doc.fields.fournisseur = '⚠ Fichier trop lourd (' + b64SizeMB.toFixed(1) + 'MB)';
-      logActivity(`⚠ "${doc.name}" — trop lourd (${b64SizeMB.toFixed(1)}MB > 4MB). Réduisez la résolution du scanner.`, 'warn');
-      toast(`⚠ "${doc.name.slice(0,30)}" trop lourd — réduisez la résolution du scanner (200 DPI max)`, 'warn');
+      // Ajouter à rejectedIds pour ne plus jamais retenter ce fichier
+      if (doc.odId) rejectedIds.add(doc.odId);
+      if (doc.name) rejectedIds.add('name:' + doc.name); // aussi par nom
+      logActivity(`⚠ "${doc.name}" — trop lourd, ignoré définitivement (${b64SizeMB.toFixed(1)}MB > 4MB). Réduisez la résolution du scanner.`, 'warn');
+      // Toast une seule fois (pas à chaque sync)
+      if (!sessionStorage.getItem('warned-heavy-' + doc.name)) {
+        toast(`⚠ "${doc.name.slice(0,30)}" trop lourd — réduisez la résolution du scanner (200 DPI max)`, 'warn');
+        sessionStorage.setItem('warned-heavy-' + doc.name, '1');
+      }
       renderDocs(); saveStateLocal();
       return;
     }
