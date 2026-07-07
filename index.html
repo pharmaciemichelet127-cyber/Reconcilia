@@ -1119,6 +1119,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
       <div style="font-size:12px;color:var(--ink2)" id="bc-table-count"></div>
       <div style="flex:1"></div>
       <button class="btn btn-secondary btn-sm" onclick="enrichirLibellesClaude()" id="btn-enrich-libelles" title="Demander à Claude les libellés officiels par CIP13" style="border-color:var(--accent2);color:var(--accent2)">🔍 Enrichir libellés</button>
+      <button class="btn btn-primary btn-sm" onclick="enregistrerCommeCommande()" id="btn-save-commande" title="Enregistrer ce bon de commande dans l'onglet Commandes" style="background:var(--green);border-color:var(--green)">📋 Enregistrer comme commande</button>
       <button class="btn btn-secondary btn-sm" onclick="clearBarcodes()">🗑 Effacer</button>
     </div>
     <div style="overflow-x:auto">
@@ -3643,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z52';
+const APP_VERSION = '2.0.20260707z53';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11503,6 +11504,56 @@ async function enrichirLibellesClaude() {
     if (btn) { btn.disabled = false; btn.textContent = '🔍 Enrichir libellés'; }
   }
 }
+// Créer une commande depuis les codes-barres extraits
+async function enregistrerCommeCommande() {
+  if (!_bcItems.length) { toast('Aucun produit à enregistrer', 'warn'); return; }
+
+  // Extraire le fournisseur depuis le titre
+  let fournisseur = _bcTitle || '';
+  // Nettoyer le titre pour extraire le fournisseur
+  fournisseur = fournisseur.replace(/\s*—\s*.*$/, '').replace(/^\s*ALLIANCE\s*/i, 'ALLIANCE HEALTHCARE').trim();
+  if (!fournisseur || fournisseur.length < 2) fournisseur = 'ALLIANCE HEALTHCARE';
+
+  const today = new Date();
+  const dateISO = today.toISOString().slice(0,10);
+  const dateDisplay = today.toLocaleDateString('fr-FR');
+
+  // Créer la commande
+  const cmd = {
+    id: 'cmd-' + Date.now(),
+    fournisseur: normalizeLaboName(fournisseur),
+    date: dateISO,
+    dateISO: today.toISOString(),
+    dateDisplay,
+    numero: '',
+    montant: '',
+    canal: 'DIRECT',
+    delai: commandesDelais[normalize(fournisseur)] || 5,
+    comment: `Importé depuis codes-barres — ${_bcItems.length} produits`,
+    produits: _bcItems.map(it => ({
+      ean: it.ean,
+      designation: it.designation,
+      qte: it.qte || 0,
+      prixU: null
+    })),
+    pages: [], // pas de pages scannées dans ce flux
+    statut: 'commande',
+    createdAt: dateDisplay
+  };
+
+  commandesList.unshift(cmd);
+  saveCommandesLocal();
+  await saveCommandesOD();
+
+  // Basculer vers l'onglet Commandes
+  const cmdBtn = document.querySelector('.nav-tab[onclick*="commandes"]');
+  showPage('commandes', cmdBtn);
+  renderCommandesPage();
+
+  toast(`✅ Commande "${fournisseur}" créée — ${_bcItems.length} produits`, 'success');
+  logActivity(`📋 Commande créée depuis codes-barres : ${fournisseur} — ${_bcItems.length} produits`, 'ok');
+}
+
 function clearBarcodes() {
   _bcItems = []; _bcTitle = '';
   document.getElementById('bc-table-wrap').style.display = 'none';
