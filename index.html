@@ -3643,7 +3643,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z51';
+const APP_VERSION = '2.0.20260707z52';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11448,55 +11448,61 @@ function syncBcPrint() {
 async function enrichirLibellesClaude() {
   if (!_bcItems.length) return;
   const btn = document.getElementById('btn-enrich-libelles');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Recherche…'; }
-  showBcStatus('🔍 Recherche des libellés officiels par CIP13…');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enrichissement…'; }
+  showBcStatus('🔍 Correction des libellés en cours…');
 
   try {
-    // Envoyer les CIP13 par lots de 30
-    const batchSize = 30;
+    const batchSize = 20;
+    let enriched = 0;
+
     for (let i = 0; i < _bcItems.length; i += batchSize) {
       const batch = _bcItems.slice(i, i + batchSize);
-      const cips = batch.map((it, j) => `${i+j+1}. ${it.ean}`).join('\n');
+      const lines = batch.map((it, j) =>
+        (i+j+1) + '. CIP13=' + it.ean + ' | OCR="' + (it.designation !== '⚠ À COMPLÉTER' ? it.designation : '?') + '"'
+      ).join('\n');
 
-      const prompt = `Tu es un expert en pharmacologie française. Pour chaque code CIP13 ci-dessous, donne le nom exact du médicament tel qu'il figure dans la base de données ANSM/Vidal (dénomination commerciale complète avec dosage et forme galénique).
+      const prompt = 'Tu es un expert en médicaments français. Pour chaque ligne, tu as un CIP13 et un libellé OCR (parfois corrompu). Retourne le nom officiel exact du médicament.\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE","designation":"NOM EXACT"}]\n\nLignes :\n' + lines;
 
-Format de réponse UNIQUEMENT un JSON valide sans backticks :
-[{"ean":"3400932935345","designation":"CLARADOL 500MG CAFÉINE CPR 16"},...]
-
-Codes CIP13 :
-${cips}`;
+      showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({model: MODEL, max_tokens: 4096, messages: [{role: 'user', content: prompt}]})
       });
+
+      if (!res.ok) { logActivity('⚠ Enrichissement HTTP ' + res.status, 'warn'); continue; }
+
       const data = await res.json();
-      const text = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-      const items = JSON.parse(text);
+      const text = (data.content||[]).map(c=>c.text||'').join('');
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) { logActivity('⚠ Enrichissement : pas de JSON', 'warn'); continue; }
+
+      const items = JSON.parse(jsonMatch[0]);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          const idx = _bcItems.findIndex(x => x.ean === String(it.ean));
-          if (idx >= 0 && it.designation && it.designation.trim()) {
-            _bcItems[idx].designation = it.designation.trim();
-            _bcItems[idx].manuscrit = false;
+          const idx2 = _bcItems.findIndex(x => x.ean === String(it.ean));
+          if (idx2 >= 0 && it.designation && it.designation.trim() && it.designation !== '?') {
+            _bcItems[idx2].designation = it.designation.trim();
+            _bcItems[idx2].manuscrit = false;
+            enriched++;
           }
         });
       }
-      if (i + batchSize < _bcItems.length) await new Promise(r => setTimeout(r, 1000));
+      if (i + batchSize < _bcItems.length) await new Promise(r => setTimeout(r, 1200));
     }
 
     hideBcStatus();
     renderBcTable();
-    toast(`✅ Libellés enrichis pour ${_bcItems.length} produits`, 'success');
+    toast('✅ ' + enriched + ' libellés corrigés', 'success');
   } catch(e) {
     hideBcStatus();
+    logActivity('⚠ Enrichissement : ' + e.message, 'warn');
     toast('Erreur enrichissement : ' + e.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔍 Enrichir libellés'; }
   }
 }
-
 function clearBarcodes() {
   _bcItems = []; _bcTitle = '';
   document.getElementById('bc-table-wrap').style.display = 'none';
