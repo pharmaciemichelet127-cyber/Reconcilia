@@ -3642,7 +3642,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z43';
+const APP_VERSION = '2.0.20260707z44';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11398,15 +11398,25 @@ function renderBcTable() {
       tdBar.innerHTML = `<svg id="${svgId}"></svg>`;
       tr.appendChild(tdBar);
 
-      // Quantité — éditable, grande
+      // Quantité — éditable, surlignée en jaune si manuscrite
       const tdQte = document.createElement('td');
       tdQte.style.cssText = 'padding:18px 16px;text-align:center;font-weight:800;font-family:JetBrains Mono,monospace;font-size:22px;color:var(--ink);vertical-align:middle;white-space:nowrap';
       if (forPrint) {
         tdQte.textContent = item.qte || '';
       } else {
-        tdQte.innerHTML = `<input type="number" min="0" value="${item.qte}" onchange="_bcItems[${idx}].qte=parseInt(this.value)||0;syncBcPrint()" style="border:none;background:transparent;width:70px;text-align:center;font-family:inherit;font-weight:800;font-size:22px;color:var(--ink)">`;
+        const hl = item.manuscrit ? 'background:rgba(255,230,0,0.5);border-radius:6px;' : '';
+        tdQte.innerHTML = `<input type="number" min="0" value="${item.qte}" title="${item.manuscrit?'Quantité manuscrite — vérifier avant impression':''}" onchange="_bcItems[${idx}].qte=parseInt(this.value)||0;_bcItems[${idx}].manuscrit=false;this.style.background='';syncBcPrint()" style="border:none;background:transparent;width:70px;text-align:center;font-family:inherit;font-weight:800;font-size:22px;color:var(--ink);${hl}">`;
+        if (item.manuscrit) tdQte.style.background = 'rgba(255,230,0,0.3)';
       }
       tr.appendChild(tdQte);
+
+      // Bouton ✕ pour retirer la ligne (mode interactif uniquement)
+      if (!forPrint) {
+        const tdDel = document.createElement('td');
+        tdDel.style.cssText = 'padding:4px 6px;text-align:center;vertical-align:middle;width:28px';
+        tdDel.innerHTML = `<button onclick="_bcItems.splice(${idx},1);renderBcTable()" style="border:none;background:none;cursor:pointer;font-size:18px;color:var(--ink2);line-height:1;padding:0" title="Retirer cette ligne">✕</button>`;
+        tr.appendChild(tdDel);
+      }
       container.appendChild(tr);
 
       // Générer le code-barres : large, haut, bien margé
@@ -11658,18 +11668,20 @@ async function extractBcFromBase64(base64, filename) {
   for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
   const pdf = await pdfjsLib.getDocument({data:bytes}).promise;
 
-  // Collecter tout le texte du PDF avec positions
+  // ── Détection du format et des colonnes ─────────────────────────────────
   let allLines = [];
   let rawText = '';
+  let qtyColX = null;
+  let pfhtColX = null;
+  let isCencora = false;
 
   for (let p=1; p<=pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
     rawText += content.items.map(it=>it.str).join(' ');
-
     const lineMap = new Map();
     for (const item of content.items) {
-      const y = Math.round(item.transform[5]/2)*2; // tolérance 2px
+      const y = Math.round(item.transform[5]/2)*2;
       if (!lineMap.has(y)) lineMap.set(y, []);
       lineMap.get(y).push({x: item.transform[4], text: item.str.trim()});
     }
@@ -11679,97 +11691,103 @@ async function extractBcFromBase64(base64, filename) {
   }
   allLines.sort((a,b) => b.y - a.y);
 
-  // Détecter fournisseur
-  const supplier = detectSupplierFromText(rawText);
+  const supplier = detectSupplierFromText(rawText) || 'ALLIANCE';
+  if (rawText.toLowerCase().includes('cencora') || rawText.toLowerCase().includes('alliance healthcare') || rawText.toLowerCase().includes('pfht')) {
+    isCencora = true;
+  }
   if (supplier && !_bcTitle.includes(supplier)) _bcTitle = (supplier + ' — ' + _bcTitle).slice(0,80);
   const knownFormat = getBcFormat(supplier);
 
-  // Détecter colonnes depuis les en-têtes
-  let qtyColX = knownFormat?.qtyColRange ? (knownFormat.qtyColRange[0]+knownFormat.qtyColRange[1])/2 : null;
-  let qtyColTol = 80;
-
-  if (!qtyColX) {
-    for (const line of allLines) {
-      const joined = line.cells.map(c=>c.text).join(' ').toLowerCase();
-      const isQtyHeader = QTY_HEADERS_VARIANTS.some(h => joined.includes(h));
-      if (isQtyHeader) {
-        // Trouver la cellule qui contient le header
-        for (const cell of line.cells) {
-          if (QTY_HEADERS_VARIANTS.some(h => cell.text.toLowerCase().includes(h.slice(0,8)))) {
-            qtyColX = cell.x;
-            break;
-          }
-        }
-        if (qtyColX) break;
-      }
-      // Détecter aussi "numéro de bordereau"
-      if (/num[eé]ro.*border|border.*n[°o]|bl\s*n[°o]/i.test(joined)) {
-        const cells = line.cells;
-        const idx = cells.findIndex(c => /border|bl\s*n[°o]/i.test(c.text));
-        if (idx >= 0 && idx+1 < cells.length) _bcTitle = cells[idx+1].text || _bcTitle;
-      }
+  // Détecter colonnes Quantité et PFHT
+  for (const line of allLines) {
+    const joined = line.cells.map(c=>c.text).join(' ').toLowerCase();
+    if (!qtyColX && QTY_HEADERS_VARIANTS.some(h => joined.includes(h.slice(0,8)))) {
+      const qtyCell = line.cells.find(c => QTY_HEADERS_VARIANTS.some(h => c.text.toLowerCase().includes(h.slice(0,8))));
+      if (qtyCell) qtyColX = qtyCell.x;
+    }
+    if (!pfhtColX && (joined.includes('pfht') || joined.includes('p.f.h.t'))) {
+      const pfhtCell = line.cells.find(c => c.text.toLowerCase().includes('pfht'));
+      if (pfhtCell) pfhtColX = pfhtCell.x;
+    }
+    if (/num[eé]ro.*border|border.*n[°o]|bl\s*n[°o]/i.test(joined)) {
+      const idx = line.cells.findIndex(c => /border|bl\s*n[°o]/i.test(c.text));
+      if (idx >= 0 && idx+1 < line.cells.length) _bcTitle = line.cells[idx+1].text || _bcTitle;
     }
   }
 
-  // Extraction des EAN-13 avec contexte
+  // ── Extraction ligne par ligne ─────────────────────────────────────────
   const learnedEanX = []; const learnedQtyX = [];
-  let found = 0;
 
   for (const line of allLines) {
-    const texts = line.cells.map(c=>c.text).filter(Boolean);
-    for (let i=0; i<line.cells.length; i++) {
-      const t = line.cells[i].text.replace(/\s/g,'');
-      if (!isValidEAN13(t)) continue;
+    const allCells = line.cells;
+    // EAN cherché n'importe où dans la ligne (avant: NEW !, ★, *2...)
+    let eanIdx = -1;
+    for (let i = 0; i < allCells.length; i++) {
+      if (isValidEAN13(allCells[i].text.replace(/\s/g,''))) { eanIdx = i; break; }
+    }
+    if (eanIdx < 0) continue;
+    const ean = allCells[eanIdx].text.replace(/\s/g,'');
+    learnedEanX.push(allCells[eanIdx].x);
 
-      const eanX = line.cells[i].x;
-      learnedEanX.push(eanX);
-
-      // Désignation : textes avant l'EAN sur la même ligne
-      let designation = line.cells.slice(0,i).map(c=>c.text).join(' ').trim();
-
-      // Si format connu et désignation vide : chercher dans la plage mémorisée
-      if (!designation && knownFormat?.desColRange) {
-        const [dx1,dx2] = knownFormat.desColRange;
-        designation = line.cells.filter(c=>c.x>=dx1&&c.x<=dx2&&c.x<eanX).map(c=>c.text).join(' ').trim();
+    // Libellé : entre EAN et colonne PFHT (ou première valeur décimale prix)
+    let designation = '';
+    const afterEanCells = allCells.slice(eanIdx+1);
+    if (pfhtColX !== null) {
+      designation = afterEanCells
+        .filter(c => c.x < pfhtColX - 10 && c.text && !/^\d+[,.]\d+$/.test(c.text.replace(/\s/g,'')))
+        .map(c=>c.text).join(' ').trim();
+    }
+    if (!designation) {
+      for (const cell of afterEanCells) {
+        if (/^\d+[,.]\d{2}$/.test(cell.text.replace(/\s/g,''))) break;
+        if (cell.text && !/^\d+$/.test(cell.text.replace(/\s/g,''))) designation += (designation?' ':'')+cell.text;
       }
-      if (!designation) designation = '—';
+    }
+    if (!designation) designation = '—';
 
-      // Quantité : chercher après l'EAN dans la colonne qty ou première valeur numérique
-      let qte = 0;
-      const afterEan = line.cells.slice(i+1);
-      for (const cell of afterEan) {
-        const n = parseInt(cell.text.replace(/\s|\./g,''), 10);
-        if (!isNaN(n) && n>0 && n<10000) {
-          if (qtyColX !== null && Math.abs(cell.x - qtyColX) < qtyColTol) {
-            qte = n; learnedQtyX.push(cell.x); break;
-          } else if (qtyColX === null) {
-            qte = n; learnedQtyX.push(cell.x); break;
-          }
+    // Quantité : colonne qty si détectée, sinon dernière valeur entière (Alliance)
+    let qte = 0;
+    let manuscrit = false;
+    if (qtyColX !== null) {
+      const qtyCell = afterEanCells.find(c => Math.abs(c.x - qtyColX) < 80);
+      if (qtyCell) {
+        const n = parseInt(qtyCell.text.replace(/[^0-9]/g,''), 10);
+        if (!isNaN(n) && n > 0) { qte = n; learnedQtyX.push(qtyCell.x); manuscrit = isCencora; }
+      }
+    }
+    if (!qte && isCencora) {
+      // Alliance : quantité = dernière cellule entière lisible
+      for (const cell of [...allCells].reverse()) {
+        const n = parseInt(cell.text.replace(/[^0-9]/g,''), 10);
+        if (!isNaN(n) && n > 0 && n < 10000 && cell.text.trim() === String(n)) {
+          qte = n; manuscrit = true; learnedQtyX.push(cell.x); break;
         }
       }
-
-      if (!_bcItems.find(it=>it.ean===t)) {
-        _bcItems.push({designation, ean:t, qte});
-        found++;
+    }
+    if (!qte && !isCencora) {
+      for (const cell of afterEanCells) {
+        const n = parseInt(cell.text.replace(/\s/g,''), 10);
+        if (!isNaN(n) && n > 0 && n < 10000) { qte = n; learnedQtyX.push(cell.x); break; }
       }
+    }
+
+    if (!_bcItems.find(it=>it.ean===ean)) {
+      _bcItems.push({designation, ean, qte, manuscrit});
     }
   }
 
-  // ── Apprentissage du format si extraction réussie ──
-  if (found > 0 && supplier) {
-    const avgEanX = learnedEanX.reduce((a,b)=>a+b,0)/learnedEanX.length;
-    const avgQtyX = learnedQtyX.length ? learnedQtyX.reduce((a,b)=>a+b,0)/learnedQtyX.length : qtyColX;
+  // Apprentissage
+  if (_bcItems.length > 0 && supplier) {
+    const avgEanX = learnedEanX.length ? learnedEanX.reduce((a,b)=>a+b,0)/learnedEanX.length : null;
+    const avgQtyX = learnedQtyX.length ? learnedQtyX.reduce((a,b)=>a+b,0)/learnedQtyX.length : null;
     saveBcFormat(supplier, {
-      eanColRange: [avgEanX-20, avgEanX+20],
+      eanColRange: avgEanX ? [avgEanX-20, avgEanX+20] : null,
       qtyColRange: avgQtyX ? [avgQtyX-60, avgQtyX+60] : null,
+      pfhtColX, isCencora,
       qtyHeaders: QTY_HEADERS_VARIANTS.filter(h => rawText.toLowerCase().includes(h.slice(0,8))),
       usedKnownFormat: !!knownFormat
     });
-    if (knownFormat) {
-      logActivity(`✅ Format "${supplier}" reconnu (confiance ${knownFormat.confidence}) — ${found} EAN extraits`, 'ok');
-    } else {
-      logActivity(`📚 Nouveau format "${supplier}" appris — ${found} EAN extraits`, 'info');
-    }
+    logActivity(`✅ Format "${supplier}"${isCencora?' (Cencora)':''} — ${_bcItems.length} EAN extraits`, 'ok');
   }
 }
 
