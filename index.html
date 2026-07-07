@@ -3644,7 +3644,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z56';
+const APP_VERSION = '2.0.20260707z58';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11294,7 +11294,24 @@ function isValidEAN13(code) {
   return (10 - sum%10)%10 === d[12];
 }
 
-// Vérifie si c'est un code à 13 chiffres (même clé incorrecte) — pour les OCR imparfaits
+// Convertit un CIP7 (7 chiffres) en EAN-13 pharmaceutique français
+// Formule : "34009" + CIP7 + clé de contrôle EAN-13
+function cip7ToEAN13(cip7) {
+  const s = String(cip7).replace(/\s/g,'');
+  if (!/^\d{7}$/.test(s)) return null;
+  const base = '34009' + s; // 12 chiffres
+  const d = base.split('').map(Number);
+  const sum = d.reduce((acc, v, i) => acc + v * (i%2===0 ? 1 : 3), 0);
+  const check = (10 - sum%10)%10;
+  return base + check;
+}
+
+// Vérifie si c'est un CIP7 (7 chiffres)
+function isCIP7(code) {
+  return /^\d{7}$/.test(code.replace(/\s/g,''));
+}
+
+// Vérifie si c'est un code à 13 chiffres (même clé incorrecte)
 function is13Digits(code) {
   return /^\d{13}$/.test(code);
 }
@@ -11411,10 +11428,11 @@ function renderBcTable() {
 
       // EAN
       const tdEan = document.createElement('td');
-      const eanColor = item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
-      const eanTitle = item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier ce code"' : '';
+      const eanColor = item.isCip7 ? '#7c3aed' : item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
+      const eanTitle = item.isCip7 ? 'title="Code CIP7 CERP — cliquer 🔍 Enrichir libellés pour obtenir l\'EAN-13"' : item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier"' : '';
       tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:'+eanColor+';vertical-align:middle;letter-spacing:1px;white-space:nowrap';
-      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${item.eanInvalid?' ⚠':''}</span>`;
+      const eanSuffix = item.isCip7 ? ' 🔄' : item.eanInvalid ? ' ⚠' : '';
+      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}</span>`;
       tr.appendChild(tdEan);
 
       // Code-barres SVG — grand et aéré
@@ -11496,7 +11514,8 @@ async function enrichirLibellesClaude() {
         return (i+j+1) + '. CIP13=' + it.ean + ocrHint;
       }).join('\n');
 
-      const prompt = 'Tu es pharmacologue expert France. Pour chaque ligne tu as un code CIP13 (identifiant officiel ANSM). Identifie le médicament par son CIP13 en priorité. Si un libellé OCR est fourni, il peut t\'aider mais peut être corrompu — le CIP13 prime toujours.\nRetourne :\n- "ean" : CIP13 corrigé si tu peux identifier le bon code (sinon garde le même)\n- "designation" : dénomination commerciale officielle COMPLÈTE (ex: NAABAK 4,9%, collyre en solution, QUVIVIQ 50 mg, comprimé...)\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE","designation":"NOM OFFICIEL COMPLET"}]\n\nLignes :\n' + lines;
+      const hasCip7 = batch.some(it => it.isCip7);
+      const prompt = 'Tu es expert pharmacie/parapharmacie France. Pour chaque ligne, tu as' + (hasCip7 ? ' un code CIP7 (7 chiffres, référence interne CERP grossiste)' : ' un code CIP13') + ' et un libellé (parfois OCR corrompu).\nRetourne pour chaque ligne :\n- "ean" : le code EAN-13 qui se trouve sur la BOÎTE PHYSIQUE du produit (13 chiffres). Pour les médicaments remboursables : commence par 34009. Pour cosmétiques/parapharmacie : code EAN du fabricant.\n- "designation" : nom commercial complet officiel du produit\n\nRetourne UNIQUEMENT un JSON valide (même ordre) :\n[{"ean":"3400907646018","designation":"MEPORE PANS ADH ST 9X15CM BT10"}]\n\nLignes :\n' + lines;
 
       showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
@@ -11741,16 +11760,25 @@ async function extractBcVisionClaude(file) {
     const imgs = [jpeg];
     const bi = p - 1;
     const batches = { length: totalPages };
-    const prompt = `Tu analyses une page d'un bon de commande pharmaceutique (Alliance Healthcare, Cencora ou autre).
+    const prompt = `Tu analyses une page d'un document pharmaceutique. Il peut s'agir d'un bon de livraison CERP, d'un bon de commande Alliance Healthcare, ou d'un bon de livraison TEVA/Biosynex.
 
-Pour CHAQUE ligne produit visible (peu importe la section : LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, LES ESSENTIELLES, etc.) :
-- Repère le code CIP13 (13 chiffres commençant par 3400...)
-- Copie le LIBELLÉ EXACT du produit, LETTRE PAR LETTRE, tel qu'il est imprimé. Ne change rien, ne résume pas, ne corrige pas.
-- Ignore toutes les colonnes de prix (PFHT, PPHT, Remise%, Prix remisé, Palier).
-- Mets "qte":0 pour toutes les lignes.
+SELON LE FORMAT DÉTECTÉ :
 
-Retourne UNIQUEMENT un JSON valide, sans backticks :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0},{"ean":"3400938322446","designation":"AVAMYS 27,5µG/PULV NAS 120DOS1","qte":0}]`;
+1. BON DE LIVRAISON CERP (logo CERP visible, colonnes : code CIP 7 chiffres | désignation | qté livrée) :
+   - Extrait le code CIP à 7 CHIFFRES (ex: 7646018, 3272727, 3405246)
+   - Copie le libellé EXACT
+   - Prends la quantité livrée (colonne "livr." ou "Qtés livrées")
+
+2. BON DE COMMANDE Alliance Healthcare (colonnes CIP13 | libellé | prix | quantité manuscrite) :
+   - Code CIP à 13 CHIFFRES commençant par 3400
+   - Libellé exact, mets "qte":0
+
+3. BON DE LIVRAISON TEVA/autre (format EAN-13 ou "EAN :XXXX") :
+   - Code EAN à 13 chiffres
+   - Quantité livrée
+
+Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes produits) :
+[{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2},{"ean":"3272727","designation":"ZYLORIC 200MG CPR BT28","qte":1}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
@@ -11769,9 +11797,13 @@ Retourne UNIQUEMENT un JSON valide, sans backticks :
       const items = JSON.parse(text);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          if (it.ean && is13Digits(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-            const eanValid = isValidEAN13(String(it.ean));
-            _bcItems.push({designation: it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', ean: String(it.ean), qte: 0, manuscrit: true, eanInvalid: !eanValid});
+          let rawEan = String(it.ean).replace(/\s/g,'');
+          const des1 = it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER';
+          // Accepter CIP7 (CERP) et EAN-13 — la conversion se fera via enrichissement
+          if ((is13Digits(rawEan) || isCIP7(rawEan)) && !_bcItems.find(x=>x.ean===rawEan)) {
+            const eanValid = isValidEAN13(rawEan);
+            const isCip7Code = isCIP7(rawEan);
+            _bcItems.push({designation: des1, ean: rawEan, qte: parseInt(it.qte)||0, manuscrit: false, eanInvalid: !eanValid || isCip7Code, isCip7: isCip7Code});
           }
         });
       }
@@ -11847,13 +11879,16 @@ async function extractBcFromBase64(base64, filename) {
 
   for (const line of allLines) {
     const allCells = line.cells;
-    // EAN cherché n'importe où dans la ligne (avant: NEW !, ★, *2...)
+    // EAN-13 ou CIP7 (CERP) cherché dans la ligne
     let eanIdx = -1;
     for (let i = 0; i < allCells.length; i++) {
-      if (isValidEAN13(allCells[i].text.replace(/\s/g,''))) { eanIdx = i; break; }
+      const t = allCells[i].text.replace(/\s/g,'');
+      if (isValidEAN13(t) || is13Digits(t)) { eanIdx = i; break; }
+      if (isCIP7(t) && i < 4) { eanIdx = i; break; } // CIP7 CERP dans les 4 premières colonnes
     }
     if (eanIdx < 0) continue;
-    const ean = allCells[eanIdx].text.replace(/\s/g,'');
+    const rawCode = allCells[eanIdx].text.replace(/\s/g,'');
+    const ean = rawCode; // garder tel quel — CIP7 ou EAN13, l'enrichissement convertira
     learnedEanX.push(allCells[eanIdx].x);
 
     // Libellé : entre EAN et colonne PFHT (ou première valeur décimale prix)
@@ -11899,7 +11934,8 @@ async function extractBcFromBase64(base64, filename) {
     }
 
     if (!_bcItems.find(it=>it.ean===ean)) {
-      _bcItems.push({designation, ean, qte: 0, manuscrit: false});
+      const isCip7Code = isCIP7(ean);
+      _bcItems.push({designation, ean, qte: qte||0, manuscrit: false, eanInvalid: isCip7Code || !isValidEAN13(ean), isCip7: isCip7Code});
     }
   }
 
