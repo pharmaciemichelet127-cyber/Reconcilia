@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z74';
+const APP_VERSION = '2.0.20260708z75';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11347,6 +11347,19 @@ function statutsBadgeHtml(statut, autoClosed, autoClosedNote) {
 // ════ CODES-BARRES BL — extraction pdf.js + rendu JsBarcode
 let _bcItems = [];   // [{designation, ean, qte}]
 let _bcSupplier = ''; // Fournisseur détecté lors de la dernière extraction (pour auto-enrichissement)
+
+// Détecte un libellé "poubelle" issu de l'OCR : code PREP (260707MAR03189),
+// référence commande (CDE:394063 / CDE;394063 / CDE.394063), date, vide, placeholder…
+function isBcDesGarbage(des) {
+  const flat = (des || '').replace(/\s/g,'');
+  if (!flat || flat === '—') return true;
+  if (flat.includes('COMPLÉTER') || flat.includes('COMPLETER')) return true;
+  if (/^\d{6}[A-Z]{2,4}\d+/.test(flat)) return true;          // code PREP type 260707MAR03189
+  if (/^CDE[\s:;.,]*\d/i.test(flat)) return true;             // CDE:394063, CDE;394063…
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(flat)) return true;         // date
+  if (/^N[°o]?CDE/i.test(flat)) return true;                  // N° CDE
+  return false;
+}
 let _bcTitle  = '';
 
 // ── Mémoire des formats par fournisseur ─────────────────────
@@ -11536,7 +11549,7 @@ function renderBcTable() {
       // Désignation — libellé fixe (non éditable). Saisie possible uniquement si "⚠ À COMPLÉTER".
       const tdDes = document.createElement('td');
       tdDes.style.cssText = 'padding:18px 16px;vertical-align:middle;font-size:14px;font-weight:600;max-width:300px';
-      const isPlaceholder = item.designation === '⚠ À COMPLÉTER' || item.designation === '—' || !(item.designation || '').trim();
+      const isPlaceholder = item.designation === '⚠ À COMPLÉTER' || isBcDesGarbage(item.designation);
       if (forPrint) {
         tdDes.textContent = isPlaceholder ? '' : item.designation;
       } else if (isPlaceholder) {
@@ -11648,7 +11661,7 @@ async function enrichirLibellesClaude() {
     for (let i = 0; i < _bcItems.length; i += batchSize) {
       const batch = _bcItems.slice(i, i + batchSize);
       const lines = batch.map((it, j) => {
-        const ocr = it.designation !== '⚠ À COMPLÉTER' ? it.designation.trim() : '';
+        const ocr = !isBcDesGarbage(it.designation) ? it.designation.trim() : '';
         // Si OCR trop court ou peu fiable (< 8 chars), ne pas l'envoyer — se fier au CIP13 seul
         const ocrHint = ocr.length >= 8 ? ' | OCR="' + ocr + '"' : '';
         return (i+j+1) + '. CIP13=' + it.ean + ocrHint;
@@ -11979,9 +11992,8 @@ Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes prod
             const isCip7Code = isCIP7(rawEan);
             const existing = _bcItems.find(x=>x.ean===rawEan);
             if (existing) {
-              // Ligne déjà créée par pdf.js : compléter le libellé manquant avec celui de la vision
-              const exDes = (existing.designation || '').trim();
-              const exBad = !exDes || exDes === '—' || exDes === '⚠ À COMPLÉTER';
+              // Ligne déjà créée par pdf.js : compléter le libellé manquant ou garbage avec celui de la vision
+              const exBad = isBcDesGarbage(existing.designation);
               if (exBad && des1 !== '⚠ À COMPLÉTER') existing.designation = des1;
               if (existing.src === 'vision') {
                 existing.qte = (existing.qte||0) + (parseInt(it.qte)||0); // doublon vision réel : additionner
@@ -12115,7 +12127,7 @@ async function extractBcFromBase64(base64, filename) {
     // Format Alliance/Cencora : colonne "LIBELLE / CIP-GTIN" empilée —
     // le libellé est imprimé sur la ligne AU-DESSUS du code.
     const desFlat = (designation || '').replace(/\s/g,'');
-    const desGarbage = /^\d{6}[A-Z]{2,4}\d+/.test(desFlat) || /^CDE[:.]/i.test(desFlat) || /^\d{2}\/\d{2}\/\d{4}/.test(desFlat);
+    const desGarbage = isBcDesGarbage(designation);
     if ((!designation || designation === '—' || designation.length < 4 || desGarbage) && li > 0) {
       const prev = allLines[li-1];
       if (prev && prev.page === line.page) {
