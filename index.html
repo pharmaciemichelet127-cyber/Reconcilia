@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z77';
+const APP_VERSION = '2.0.20260708z78';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11347,6 +11347,7 @@ function statutsBadgeHtml(statut, autoClosed, autoClosedNote) {
 // ════ CODES-BARRES BL — extraction pdf.js + rendu JsBarcode
 let _bcItems = [];   // [{designation, ean, qte}]
 let _bcSupplier = ''; // Fournisseur détecté lors de la dernière extraction (pour auto-enrichissement)
+let _bcIsCommande = false; // true si la vision identifie un bon de commande (quantités laissées vides)
 
 // Détecte un libellé "poubelle" issu de l'OCR : code PREP (260707MAR03189),
 // référence commande (CDE:394063 / CDE;394063 / CDE.394063), date, vide, placeholder…
@@ -11358,6 +11359,7 @@ function isBcDesGarbage(des) {
   if (/^CDE[\s:;.,]*\d/i.test(flat)) return true;             // CDE:394063, CDE;394063…
   if (/^\d{2}\/\d{2}\/\d{4}/.test(flat)) return true;         // date
   if (/^N[°o]?CDE/i.test(flat)) return true;                  // N° CDE
+  if (/^\d/.test(flat) && flat.length <= 10) return true;     // fragment court démarrant par un chiffre (ex: 55IG/DOS)
   return false;
 }
 let _bcTitle  = '';
@@ -11479,7 +11481,7 @@ function handleBcDrop(event) {
 function handleBcFiles(fileList) {
   const files = [...fileList];
   if (!files.length) return;
-  _bcItems = []; _bcTitle = ''; _bcSupplier = '';
+  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false;
   showBcStatus('⏳ Lecture du PDF…');
   // Configurer pdf.js worker
   if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -11818,7 +11820,7 @@ function goToBLTab(fournisseurFilter) {
 }
 
 function clearBarcodes() {
-  _bcItems = []; _bcTitle = ''; _bcSupplier = '';
+  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false;
   document.getElementById('bc-table-wrap').style.display = 'none';
   document.getElementById('print-barcode-area').style.display = 'none';
   document.getElementById('btn-print-barcodes').style.display = 'none';
@@ -11876,7 +11878,7 @@ async function loadBcFromStore(docId) {
   document.getElementById('bc-bl-search').value = doc.name;
   document.getElementById('bc-bl-results').style.display = 'none';
 
-  _bcItems = []; _bcSupplier = ''; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
+  _bcItems = []; _bcSupplier = ''; _bcIsCommande = false; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
 
   // Cas 1 : base64 déjà en mémoire
   if (doc.base64) {
@@ -11969,9 +11971,10 @@ SELON LE FORMAT DÉTECTÉ :
    - ⚠ IGNORE totalement la colonne LOT/NUM SERIE (ex: 2090267, RVGJA60-2, MX2837, 45788) — ce ne sont PAS des codes produits, ne les retourne JAMAIS
    - Prends QTE LIV comme quantité
 
-3. BON DE COMMANDE Alliance Healthcare (OFFRE BOOSTER, colonnes CIP13 | libellé | prix | quantité manuscrite) :
+3. BON DE COMMANDE Alliance Healthcare (OFFRE BOOSTER, en-tête "Offre :", colonnes CIP13 | Libellé | PFHT | PPHT | Remise | Palier | Quantité) :
    - Code CIP à 13 CHIFFRES commençant par 3400
-   - Libellé exact, mets "qte":0
+   - Libellé exact
+   - "qte":0 TOUJOURS — n'essaie JAMAIS de lire les quantités manuscrites ni la colonne Palier (l'utilisateur saisira lui-même les quantités)
 
 4. BON DE LIVRAISON TEVA/autre (format EAN-13 ou "EAN :XXXX") :
    - Code EAN à 13 chiffres
@@ -11980,8 +11983,9 @@ SELON LE FORMAT DÉTECTÉ :
 Retourne UNIQUEMENT un JSON valide sans backticks.
 ⚠ EXHAUSTIVITÉ OBLIGATOIRE : compte d'abord le nombre total de lignes produits sur la page (toutes sections confondues : LES INDISPENSABLES, LES ESSENTIELLES, DESTINATION ÉTÉ, LES PRODUITS CHERS, etc.) puis retourne EXACTEMENT ce nombre d'items. N'omets AUCUNE ligne, même dans les tableaux denses de 40+ produits.
 Format :
-{"fournisseur":"ALLIANCE HEALTHCARE","items":[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]}
-"fournisseur" = celui identifié sur le document (ALLIANCE HEALTHCARE, CERP, TEVA, BIOSYNEX...) ou "" si illisible.`;
+{"fournisseur":"ALLIANCE HEALTHCARE","typeDocument":"COMMANDE","items":[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]}
+"fournisseur" = celui identifié sur le document (ALLIANCE HEALTHCARE, CERP, TEVA, BIOSYNEX...) ou "" si illisible.
+"typeDocument" = "COMMANDE" si c'est un bon de commande / offre commerciale (type 3), sinon "BL".`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
@@ -12012,6 +12016,7 @@ Format :
       // Nouveau format : {"fournisseur":"...","items":[...]} — avec fallback ancien format tableau
       if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.items)) {
         items = parsed.items;
+        if (parsed.typeDocument && /commande/i.test(parsed.typeDocument)) _bcIsCommande = true;
         if (parsed.fournisseur && parsed.fournisseur.trim()) {
           _bcSupplier = parsed.fournisseur.trim().toUpperCase();
           if (!_bcTitle || !_bcTitle.toUpperCase().includes(_bcSupplier.slice(0,8))) {
@@ -12049,6 +12054,11 @@ Format :
         const before = _bcItems.length;
         _bcItems = _bcItems.filter(x => !x.isCip7);
         if (_bcItems.length < before) logActivity(`🧹 ${before - _bcItems.length} n° de lot retirés (Alliance)`, 'ok');
+      }
+      // Bon de commande : quantités toujours laissées vides — l'utilisateur les saisit
+      // lui-même d'après ses annotations manuscrites (Palier et gribouillis non fiables)
+      if (_bcIsCommande) {
+        _bcItems.forEach(it => { it.qte = 0; it.manuscrit = true; });
       }
     } catch(e) {
       logActivity(`⚠ Vision IA page ${p} : ${e.message}`, 'warn');
