@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z70';
+const APP_VERSION = '2.0.20260708z71';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11640,7 +11640,7 @@ async function enrichirLibellesClaude() {
       }).join('\n');
 
       const hasCip7 = batch.some(it => it.isCip7);
-      const prompt = 'Tu es expert pharmacie/parapharmacie France. Pour chaque ligne, tu as' + (hasCip7 ? ' un code CIP7 (7 chiffres, référence interne CERP grossiste)' : ' un code CIP13') + ' et un libellé (parfois OCR corrompu).\nRetourne pour chaque ligne :\n- "ean" : le code EAN-13 qui se trouve sur la BOÎTE PHYSIQUE du produit (13 chiffres). Pour les médicaments remboursables : commence par 34009. Pour cosmétiques/parapharmacie : code EAN du fabricant.\n- "designation" : nom commercial complet officiel du produit\n\nRetourne UNIQUEMENT un JSON valide (même ordre) :\n[{"ean":"3400907646018","designation":"MEPORE PANS ADH ST 9X15CM BT10"}]\n\nLignes :\n' + lines;
+      const prompt = 'Tu es expert en pharmacie, parapharmacie et dispositifs médicaux (France). Pour chaque ligne, identifie le produit par son code EAN/CIP et donne son nom commercial complet.\nSi tu ne connais PAS le produit avec certitude, retourne "designation":"" (vide). Ne retourne JAMAIS de message générique comme "Identification requise" ou "non confirmé".\n\nRetourne :\n- "ean" : le code EAN-13 de la boîte physique (13 chiffres)\n- "designation" : nom commercial complet, ou "" si inconnu\n\nRetourne UNIQUEMENT un JSON valide (même ordre) :\n[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000MG CPR CROQ 30"},{"ean":"3111790874270","designation":""}]\n\nLignes :\n' + lines;
 
       showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
@@ -11667,21 +11667,26 @@ async function enrichirLibellesClaude() {
             idx2 = _bcItems.findIndex(x => x.eanInvalid && tryFixEAN13(x.ean) === String(it.ean));
           }
           if (idx2 >= 0 && it.designation && it.designation.trim() && it.designation !== '?') {
-            _bcItems[idx2].designation = it.designation.trim();
-            _bcItems[idx2].manuscrit = false;
-            // Mettre à jour l'EAN si Claude l'a corrigé
-            if (it.ean && String(it.ean) !== _bcItems[idx2].ean && isValidEAN13(String(it.ean))) {
-              _bcItems[idx2].ean = String(it.ean);
-              _bcItems[idx2].eanInvalid = false;
-            } else if (_bcItems[idx2].eanInvalid) {
-              // Essayer la correction automatique (dernier chiffre)
-              const autoFixed = correctEAN13checkDigit(_bcItems[idx2].ean);
-              if (autoFixed && isValidEAN13(autoFixed)) {
-                _bcItems[idx2].ean = autoFixed;
+            const des = it.designation.trim();
+            // Filtrer les réponses génériques d'échec (Claude ne connaît pas ce produit)
+            const isUnknown = /identification requise|non confirm|non trouvé|inconnu|not found|unknown|introuvable/i.test(des);
+            if (!isUnknown) {
+              _bcItems[idx2].designation = des;
+              _bcItems[idx2].manuscrit = false;
+              // Mettre à jour l'EAN si Claude l'a corrigé
+              if (it.ean && String(it.ean) !== _bcItems[idx2].ean && isValidEAN13(String(it.ean))) {
+                _bcItems[idx2].ean = String(it.ean);
                 _bcItems[idx2].eanInvalid = false;
+              } else if (_bcItems[idx2].eanInvalid) {
+                const autoFixed = correctEAN13checkDigit(_bcItems[idx2].ean);
+                if (autoFixed && isValidEAN13(autoFixed)) {
+                  _bcItems[idx2].ean = autoFixed;
+                  _bcItems[idx2].eanInvalid = false;
+                }
               }
+              enriched++;
             }
-            enriched++;
+            // Si inconnu → laisser "⚠ À COMPLÉTER" pour saisie manuelle
           }
         });
       }
