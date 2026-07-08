@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z79';
+const APP_VERSION = '2.0.20260708z80';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11348,6 +11348,60 @@ function statutsBadgeHtml(statut, autoClosed, autoClosedNote) {
 let _bcItems = [];   // [{designation, ean, qte}]
 let _bcSupplier = ''; // Fournisseur détecté lors de la dernière extraction (pour auto-enrichissement)
 let _bcIsCommande = false; // true si la vision identifie un bon de commande (quantités laissées vides)
+let _bcPageImages = []; // images JPEG des pages (max 10) pour relance ciblée sur libellés manquants
+
+// Relance ciblée : redemande à la vision UNIQUEMENT les libellés des codes restés
+// sans désignation après extraction + enrichissement (image du document à l'appui)
+async function rescueMissingLabelsViaVision() {
+  const missing = _bcItems.filter(it => isBcDesGarbage(it.designation) || it.designation === '⚠ À COMPLÉTER');
+  if (!missing.length || !_bcPageImages.length) return;
+
+  showBcStatus('🔎 Relance ciblée sur ' + missing.length + ' libellé(s) manquant(s)…');
+  const codes = missing.map(it => it.ean).join('\n');
+  const prompt = `Sur le document pharmaceutique en image, retrouve la ligne de CHACUN de ces codes (CIP13/EAN13) et copie le LIBELLÉ EXACT imprimé sur cette ligne (colonne Libellé). Attention : certains chiffres du code sur le document peuvent différer légèrement (OCR) — cherche le code le plus proche visuellement.
+
+Codes recherchés :
+${codes}
+
+Retourne UNIQUEMENT un JSON valide sans backticks :
+[{"ean":"3400934292293","designation":"NASACORT 55µG/DOS NAS FL15ML"}]
+Si un code est introuvable sur le document, mets "designation":"".`;
+
+  const content = _bcPageImages.map(img => ({
+    type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
+  }));
+  content.push({type: 'text', text: prompt});
+
+  try {
+    const res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model: MODEL, max_tokens: 2048, messages: [{role: 'user', content}]})
+    });
+    if (!res.ok) { logActivity('⚠ Relance libellés HTTP ' + res.status, 'warn'); hideBcStatus(); return; }
+    const data = await res.json();
+    const text = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) { hideBcStatus(); return; }
+    const found = JSON.parse(jsonMatch[0]);
+    let fixed = 0;
+    if (Array.isArray(found)) {
+      found.forEach(f => {
+        if (!f.designation || !f.designation.trim()) return;
+        const item = _bcItems.find(x => x.ean === String(f.ean));
+        if (item && (isBcDesGarbage(item.designation) || item.designation === '⚠ À COMPLÉTER')) {
+          item.designation = f.designation.trim();
+          fixed++;
+        }
+      });
+    }
+    hideBcStatus();
+    if (fixed > 0) { renderBcTable(); toast('🔎 ' + fixed + ' libellé(s) retrouvé(s) sur le document', 'success'); }
+  } catch(e) {
+    hideBcStatus();
+    logActivity('⚠ Relance libellés : ' + e.message, 'warn');
+  }
+}
 
 // Détecte un libellé "poubelle" issu de l'OCR : code PREP (260707MAR03189),
 // référence commande (CDE:394063 / CDE;394063 / CDE.394063), date, vide, placeholder…
@@ -11481,7 +11535,7 @@ function handleBcDrop(event) {
 function handleBcFiles(fileList) {
   const files = [...fileList];
   if (!files.length) return;
-  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false;
+  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false; _bcPageImages = [];
   showBcStatus('⏳ Lecture du PDF…');
   // Configurer pdf.js worker
   if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -11752,6 +11806,8 @@ async function enrichirLibellesClaude() {
     } else {
       toast('✅ ' + enriched + ' libellés corrigés', 'success');
     }
+    // Dernier filet : relance ciblée sur le document pour les libellés toujours manquants
+    await rescueMissingLabelsViaVision();
   } catch(e) {
     hideBcStatus();
     logActivity('⚠ Enrichissement : ' + e.message, 'warn');
@@ -11820,7 +11876,7 @@ function goToBLTab(fournisseurFilter) {
 }
 
 function clearBarcodes() {
-  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false;
+  _bcItems = []; _bcTitle = ''; _bcSupplier = ''; _bcIsCommande = false; _bcPageImages = [];
   document.getElementById('bc-table-wrap').style.display = 'none';
   document.getElementById('print-barcode-area').style.display = 'none';
   document.getElementById('btn-print-barcodes').style.display = 'none';
@@ -11878,7 +11934,7 @@ async function loadBcFromStore(docId) {
   document.getElementById('bc-bl-search').value = doc.name;
   document.getElementById('bc-bl-results').style.display = 'none';
 
-  _bcItems = []; _bcSupplier = ''; _bcIsCommande = false; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
+  _bcItems = []; _bcSupplier = ''; _bcIsCommande = false; _bcPageImages = []; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
 
   // Cas 1 : base64 déjà en mémoire
   if (doc.base64) {
@@ -11950,6 +12006,7 @@ async function extractBcVisionClaude(file) {
     canvas.height = viewport.height;
     await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
     const jpeg = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    if (_bcPageImages.length < 10) _bcPageImages.push(jpeg); // gardées pour relance ciblée sur libellés manquants
 
     showBcStatus(`🤖 Analyse page ${p}/${totalPages}…`);
     const imgs = [jpeg];
