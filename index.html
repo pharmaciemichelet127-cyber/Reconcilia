@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z75';
+const APP_VERSION = '2.0.20260708z76';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11951,7 +11951,9 @@ SELON LE FORMAT DÉTECTÉ :
    - Code EAN à 13 chiffres
    - Quantité livrée
 
-Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes produits) :
+Retourne UNIQUEMENT un JSON valide sans backticks.
+⚠ EXHAUSTIVITÉ OBLIGATOIRE : compte d'abord le nombre total de lignes produits sur la page (toutes sections confondues : LES INDISPENSABLES, LES ESSENTIELLES, DESTINATION ÉTÉ, LES PRODUITS CHERS, etc.) puis retourne EXACTEMENT ce nombre d'items. N'omets AUCUNE ligne, même dans les tableaux denses de 40+ produits.
+Format :
 {"fournisseur":"ALLIANCE HEALTHCARE","items":[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]}
 "fournisseur" = celui identifié sur le document (ALLIANCE HEALTHCARE, CERP, TEVA, BIOSYNEX...) ou "" si illisible.`;
 
@@ -11964,12 +11966,22 @@ Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes prod
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({model: MODEL, max_tokens: 4096, messages: [{role: 'user', content}]})
+        body: JSON.stringify({model: MODEL, max_tokens: 8192, messages: [{role: 'user', content}]})
       });
       if (!res.ok) { logActivity(`⚠ Vision IA HTTP ${res.status}`, 'warn'); continue; }
       const data = await res.json();
       const text = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-      let parsed = JSON.parse(text);
+      let parsed;
+      try { parsed = JSON.parse(text); }
+      catch(parseErr) {
+        // JSON tronqué (page très dense) : récupérer les items valides un par un
+        const salvage = [...text.matchAll(/\{[^{}]*"ean"\s*:\s*"[^"]+"[^{}]*\}/g)]
+          .map(m => { try { return JSON.parse(m[0]); } catch(_) { return null; } })
+          .filter(Boolean);
+        const fMatch = text.match(/"fournisseur"\s*:\s*"([^"]*)"/);
+        parsed = {fournisseur: fMatch ? fMatch[1] : '', items: salvage};
+        logActivity(`⚠ JSON vision tronqué page ${p} : ${salvage.length} items récupérés`, 'warn');
+      }
       let items = parsed;
       // Nouveau format : {"fournisseur":"...","items":[...]} — avec fallback ancien format tableau
       if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.items)) {
@@ -12097,22 +12109,30 @@ async function extractBcFromBase64(base64, filename) {
   for (let li = 0; li < allLines.length; li++) {
     const line = allLines[li];
     const allCells = line.cells;
-    // EAN-13 ou CIP7 (CERP) cherché dans la ligne
-    let eanIdx = -1;
+    // TOUS les codes EAN-13 de la ligne (un scan de travers peut fusionner 2 lignes produits)
+    const eanIdxs = [];
     for (let i = 0; i < allCells.length; i++) {
       const t = allCells[i].text.replace(/\s/g,'');
-      if (isValidEAN13(t) || is13Digits(t)) { eanIdx = i; break; }
-      // CIP7 réservé aux BL CERP — sur Alliance/Cencora les codes 7 chiffres sont des n° de lot
-      if (!isCencora && isCIP7(t) && i < 4) { eanIdx = i; break; }
+      if (isValidEAN13(t) || is13Digits(t)) eanIdxs.push(i);
     }
-    if (eanIdx < 0) continue;
+    // CIP7 réservé aux BL CERP — sur Alliance/Cencora les codes 7 chiffres sont des n° de lot
+    if (!eanIdxs.length && !isCencora) {
+      for (let i = 0; i < Math.min(allCells.length, 4); i++) {
+        if (isCIP7(allCells[i].text.replace(/\s/g,''))) { eanIdxs.push(i); break; }
+      }
+    }
+    if (!eanIdxs.length) continue;
+
+    for (let ei = 0; ei < eanIdxs.length; ei++) {
+    const eanIdx = eanIdxs[ei];
+    const nextEanIdx = ei + 1 < eanIdxs.length ? eanIdxs[ei + 1] : allCells.length;
     const rawCode = allCells[eanIdx].text.replace(/\s/g,'');
     const ean = rawCode; // garder tel quel — CIP7 ou EAN13, l'enrichissement convertira
     learnedEanX.push(allCells[eanIdx].x);
 
-    // Libellé : entre EAN et colonne PFHT (ou première valeur décimale prix)
+    // Libellé : entre EAN et colonne PFHT (ou première valeur décimale prix) — limité au segment de ce code
     let designation = '';
-    const afterEanCells = allCells.slice(eanIdx+1);
+    const afterEanCells = allCells.slice(eanIdx+1, nextEanIdx);
     if (pfhtColX !== null) {
       designation = afterEanCells
         .filter(c => c.x < pfhtColX - 10 && c.text && !/^\d+[,.]\d+$/.test(c.text.replace(/\s/g,'')))
@@ -12159,8 +12179,9 @@ async function extractBcFromBase64(base64, filename) {
       }
     }
     if (!qte && isCencora) {
-      // Alliance : quantité = dernière cellule entière lisible
-      for (const cell of [...allCells].reverse()) {
+      // Alliance : quantité = dernière cellule entière lisible (segment du code si ligne fusionnée)
+      const qtySearch = eanIdxs.length > 1 ? allCells.slice(eanIdx, nextEanIdx) : allCells;
+      for (const cell of [...qtySearch].reverse()) {
         const n = parseInt(cell.text.replace(/[^0-9]/g,''), 10);
         if (!isNaN(n) && n > 0 && n < 10000 && cell.text.trim() === String(n)) {
           qte = n; manuscrit = true; learnedQtyX.push(cell.x); break;
@@ -12181,6 +12202,7 @@ async function extractBcFromBase64(base64, filename) {
     } else {
       _bcItems.push({designation, ean, qte: qte||0, manuscrit: false, eanInvalid: isCip7Code || !isValidEAN13(ean), isCip7: isCip7Code, src: 'pdf'});
     }
+    } // fin boucle codes de la ligne
   }
 
   // Apprentissage
