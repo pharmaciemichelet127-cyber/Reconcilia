@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z80';
+const APP_VERSION = '2.0.20260708z81';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11414,6 +11414,8 @@ function isBcDesGarbage(des) {
   if (/^\d{2}\/\d{2}\/\d{4}/.test(flat)) return true;         // date
   if (/^N[°o]?CDE/i.test(flat)) return true;                  // N° CDE
   if (/^\d/.test(flat) && flat.length <= 10) return true;     // fragment court démarrant par un chiffre (ex: 55IG/DOS)
+  if (/^CRR/i.test(flat)) return true;                        // mention CERP après l'EAN ("CRRM Offre", garblé "CRRIr{")
+  if (/^(Tx)?remise/i.test(flat)) return true;                // "Tx remise:" CERP
   return false;
 }
 let _bcTitle  = '';
@@ -12016,10 +12018,13 @@ async function extractBcVisionClaude(file) {
 
 SELON LE FORMAT DÉTECTÉ :
 
-1. BON DE LIVRAISON CERP (logo CERP visible, colonnes : code CIP 7 chiffres | désignation | qté livrée) :
-   - Extrait le code CIP à 7 CHIFFRES (ex: 7646018, 3272727, 3405246)
-   - Copie le libellé EXACT
-   - Prends la quantité livrée (colonne "livr." ou "Qtés livrées")
+1. BON DE LIVRAISON CERP (logo CERP / "SAS CERP") :
+   ⚠ Si le document a DEUX panneaux côte à côte (le gauche titré "VOLET A NOUS RETOURNER") : utilise UNIQUEMENT le panneau DROIT ("Bon de livraison") — le gauche est un duplicata, l'extraire doublerait les produits
+   - Chaque produit = 2 lignes : ligne 1 "Qtés livrées | Désignation | code CIP | prix", ligne 2 "EAN: XXXXXXXXXXXXX CRRM Offre"
+   - Code produit : prends l'EAN-13 imprimé après "EAN:" (13 chiffres, ex: 3400928022585) — PAS le CIP 7 chiffres
+   - Si aucun "EAN:" n'est imprimé (ancien format CERP) : prends le code CIP à 7 CHIFFRES (ex: 7646018)
+   - Copie le libellé EXACT de la ligne au-dessus de l'EAN
+   - Quantité = "Qtés livrées" (début de la ligne du libellé) — JAMAIS le code secondaire (2269, 2271…) ni "Tx remise"
 
 2. BON DE LIVRAISON ALLIANCE HEALTHCARE (en-tête "BON DE LIVRAISON ET DE TRAÇABILITÉ", ou "Alliance Healthcare Répartition") :
    - Colonnes : QTE CDE | QTE LIV | LIBELLÉ (ligne 1) puis EAN/CIP-GTIN 13 chiffres sur la ligne suivante
@@ -12210,17 +12215,49 @@ async function extractBcFromBase64(base64, filename) {
   // ── Extraction ligne par ligne ─────────────────────────────────────────
   const learnedEanX = []; const learnedQtyX = [];
 
+  // Format CERP "volet" : 2 panneaux côte à côte (gauche = VOLET A NOUS RETOURNER à ignorer,
+  // droite = Bon de livraison à extraire). Détection PAR PAGE + milieu de page pour filtrer.
+  const voletMidX = {};
+  {
+    const pageTexts = {};
+    for (const l of allLines) {
+      pageTexts[l.page] = (pageTexts[l.page] || '') + ' ' + l.cells.map(c=>c.text).join(' ');
+    }
+    for (const pg of Object.keys(pageTexts)) {
+      const pt = pageTexts[pg];
+      // OCR souvent dégradé : "RETOURNER" illisible — VOLET + contexte CERP suffit
+      if (/volet/i.test(pt) && (/cerp/i.test(pt) || /retourner/i.test(pt) || /r[ée]clamation/i.test(pt))) {
+        let minX = Infinity, maxX = -Infinity;
+        for (const l of allLines) {
+          if (String(l.page) !== String(pg)) continue;
+          for (const c of l.cells) { if (c.x < minX) minX = c.x; if (c.x > maxX) maxX = c.x; }
+        }
+        voletMidX[pg] = (minX + maxX) / 2;
+      }
+    }
+  }
+
   for (let li = 0; li < allLines.length; li++) {
     const line = allLines[li];
     const allCells = line.cells;
     // TOUS les codes EAN-13 de la ligne (un scan de travers peut fusionner 2 lignes produits)
+    const midX = voletMidX[line.page];
     const eanIdxs = [];
+    const eanTagged = {}; // index → true si le code est précédé/préfixé de "EAN:" (format CERP volet)
     for (let i = 0; i < allCells.length; i++) {
-      const t = allCells[i].text.replace(/\s/g,'');
-      if (isValidEAN13(t) || is13Digits(t)) eanIdxs.push(i);
+      // Page volet CERP : ignorer tout le panneau gauche (doublon du bon de livraison)
+      if (midX !== undefined && allCells[i].x < midX) continue;
+      let t = allCells[i].text.replace(/\s/g,'');
+      let tagged = false;
+      // Cellule fusionnée "EAN:3400928022585"
+      if (/^EAN[:.]?\d/i.test(t)) { t = t.replace(/^EAN[:.]?/i,''); tagged = true; }
+      // Cellule précédente = étiquette "EAN:"
+      else if (i > 0 && /^EAN[:.]?$/i.test(allCells[i-1].text.trim())) tagged = true;
+      if (isValidEAN13(t) || is13Digits(t)) { eanIdxs.push(i); if (tagged) eanTagged[i] = true; }
     }
     // CIP7 réservé aux BL CERP — sur Alliance/Cencora les codes 7 chiffres sont des n° de lot
-    if (!eanIdxs.length && !isCencora) {
+    // Pas de CIP7 sur les pages volet : les EAN-13 sont imprimés, et les CIP7 du panneau gauche créeraient des doublons
+    if (!eanIdxs.length && !isCencora && midX === undefined) {
       for (let i = 0; i < Math.min(allCells.length, 4); i++) {
         if (isCIP7(allCells[i].text.replace(/\s/g,''))) { eanIdxs.push(i); break; }
       }
@@ -12230,7 +12267,7 @@ async function extractBcFromBase64(base64, filename) {
     for (let ei = 0; ei < eanIdxs.length; ei++) {
     const eanIdx = eanIdxs[ei];
     const nextEanIdx = ei + 1 < eanIdxs.length ? eanIdxs[ei + 1] : allCells.length;
-    const rawCode = allCells[eanIdx].text.replace(/\s/g,'');
+    const rawCode = allCells[eanIdx].text.replace(/\s/g,'').replace(/^EAN[:.]?/i,'');
     const ean = rawCode; // garder tel quel — CIP7 ou EAN13, l'enrichissement convertira
     learnedEanX.push(allCells[eanIdx].x);
 
@@ -12277,6 +12314,19 @@ async function extractBcFromBase64(base64, filename) {
     let qte = 0;
     let manuscrit = false;
     if (_bcIsCommande) { manuscrit = true; }
+    else if (eanTagged[eanIdx] || midX !== undefined || /cerp/i.test(supplier || '')) {
+      // Format CERP volet : "Qtés livrées" = premier entier de la ligne AU-DESSUS
+      // (jamais la ligne EAN elle-même — le code secondaire 2269/2271 serait pris pour une quantité)
+      // Appliqué à tout doc CERP : l'étiquette "EAN:" est souvent garblée par l'OCR (EpN:, EÀN:, EIN:)
+      if (li > 0 && allLines[li-1].page === line.page) {
+        for (const c of allLines[li-1].cells) {
+          if (midX !== undefined && c.x < midX) continue;
+          const flat = (c.text || '').trim();
+          const n = parseInt(flat, 10);
+          if (/^\d{1,3}$/.test(flat) && n > 0) { qte = n; learnedQtyX.push(c.x); break; }
+        }
+      }
+    }
     else {
     if (qtyColX !== null) {
       const qtyCell = afterEanCells.find(c => Math.abs(c.x - qtyColX) < 80);
