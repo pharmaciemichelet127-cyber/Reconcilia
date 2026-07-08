@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z73';
+const APP_VERSION = '2.0.20260708z74';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11923,9 +11923,11 @@ SELON LE FORMAT DÉTECTÉ :
    - Copie le libellé EXACT
    - Prends la quantité livrée (colonne "livr." ou "Qtés livrées")
 
-2. BON DE LIVRAISON ALLIANCE HEALTHCARE (en-tête "BON DE LIVRAISON ET DE TRAÇABILITÉ") :
+2. BON DE LIVRAISON ALLIANCE HEALTHCARE (en-tête "BON DE LIVRAISON ET DE TRAÇABILITÉ", ou "Alliance Healthcare Répartition") :
    - Colonnes : QTE CDE | QTE LIV | LIBELLÉ (ligne 1) puis EAN/CIP-GTIN 13 chiffres sur la ligne suivante
+   - Le LIBELLÉ est imprimé sur la ligne AU-DESSUS du code : associe chaque code au libellé juste au-dessus
    - EAN peut commencer par n'importe quel chiffre (3664, 3111, 5712, 3400...)
+   - ⚠ IGNORE totalement la colonne LOT/NUM SERIE (ex: 2090267, RVGJA60-2, MX2837, 45788) — ce ne sont PAS des codes produits, ne les retourne JAMAIS
    - Prends QTE LIV comme quantité
 
 3. BON DE COMMANDE Alliance Healthcare (OFFRE BOOSTER, colonnes CIP13 | libellé | prix | quantité manuscrite) :
@@ -11937,7 +11939,8 @@ SELON LE FORMAT DÉTECTÉ :
    - Quantité livrée
 
 Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes produits) :
-[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]`;
+{"fournisseur":"ALLIANCE HEALTHCARE","items":[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]}
+"fournisseur" = celui identifié sur le document (ALLIANCE HEALTHCARE, CERP, TEVA, BIOSYNEX...) ou "" si illisible.`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
@@ -11953,24 +11956,49 @@ Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes prod
       if (!res.ok) { logActivity(`⚠ Vision IA HTTP ${res.status}`, 'warn'); continue; }
       const data = await res.json();
       const text = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-      const items = JSON.parse(text);
+      let parsed = JSON.parse(text);
+      let items = parsed;
+      // Nouveau format : {"fournisseur":"...","items":[...]} — avec fallback ancien format tableau
+      if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.items)) {
+        items = parsed.items;
+        if (parsed.fournisseur && parsed.fournisseur.trim()) {
+          _bcSupplier = parsed.fournisseur.trim().toUpperCase();
+          if (!_bcTitle || !_bcTitle.toUpperCase().includes(_bcSupplier.slice(0,8))) {
+            _bcTitle = (_bcSupplier + ' — ' + (_bcTitle || file.name).replace(/\.pdf$/i,'')).slice(0,80);
+          }
+        }
+      }
+      const visionIsAlliance = /alliance|cencora/i.test(_bcSupplier || '');
       if (Array.isArray(items)) {
         items.forEach(it => {
           let rawEan = String(it.ean).replace(/\s/g,'');
           const des1 = it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER';
-          // Accepter CIP7 (CERP) et EAN-13 — la conversion se fera via enrichissement
-          if (is13Digits(rawEan) || isCIP7(rawEan)) {
+          // CIP7 accepté uniquement hors Alliance (sur Alliance = numéros de lot)
+          if (is13Digits(rawEan) || (isCIP7(rawEan) && !visionIsAlliance)) {
             const eanValid = isValidEAN13(rawEan);
             const isCip7Code = isCIP7(rawEan);
             const existing = _bcItems.find(x=>x.ean===rawEan);
             if (existing) {
-              // Même code : additionner les quantités (2 boîtes du même article)
-              existing.qte = (existing.qte||0) + (parseInt(it.qte)||0);
+              // Ligne déjà créée par pdf.js : compléter le libellé manquant avec celui de la vision
+              const exDes = (existing.designation || '').trim();
+              const exBad = !exDes || exDes === '—' || exDes === '⚠ À COMPLÉTER';
+              if (exBad && des1 !== '⚠ À COMPLÉTER') existing.designation = des1;
+              if (existing.src === 'vision') {
+                existing.qte = (existing.qte||0) + (parseInt(it.qte)||0); // doublon vision réel : additionner
+              } else if (!existing.qte) {
+                existing.qte = parseInt(it.qte)||0; // pdf.js n'avait pas de quantité : prendre celle de la vision
+              }
             } else {
-              _bcItems.push({designation: des1, ean: rawEan, qte: parseInt(it.qte)||0, manuscrit: false, eanInvalid: !eanValid || isCip7Code, isCip7: isCip7Code});
+              _bcItems.push({designation: des1, ean: rawEan, qte: parseInt(it.qte)||0, manuscrit: false, eanInvalid: !eanValid || isCip7Code, isCip7: isCip7Code, src: 'vision'});
             }
           }
         });
+      }
+      // Purge des fausses lignes CIP7 (numéros de lot) créées par pdf.js si Alliance confirmé par la vision
+      if (visionIsAlliance) {
+        const before = _bcItems.length;
+        _bcItems = _bcItems.filter(x => !x.isCip7);
+        if (_bcItems.length < before) logActivity(`🧹 ${before - _bcItems.length} n° de lot retirés (Alliance)`, 'ok');
       }
     } catch(e) {
       logActivity(`⚠ Vision IA page ${p} : ${e.message}`, 'warn');
@@ -12017,7 +12045,10 @@ async function extractBcFromBase64(base64, filename) {
 
   // Détecter le fournisseur depuis le texte extrait
   let supplier = detectSupplierFromText(rawText) || '';
-  if (rawText.toLowerCase().includes('cencora') || rawText.toLowerCase().includes('alliance healthcare') || rawText.toLowerCase().includes('pfht')) {
+  const flatText = rawText.toLowerCase().replace(/\s/g,'');
+  if (rawText.toLowerCase().includes('cencora') || rawText.toLowerCase().includes('alliance healthcare') || rawText.toLowerCase().includes('pfht')
+      || flatText.includes('421218132')            // RCS/TVA Alliance Healthcare — lisible même sur scan dégradé
+      || /tra[çc]abilit/i.test(rawText)) {         // en-tête "BON DE LIVRAISON ET DE TRAÇABILITÉ"
     isCencora = true;
     if (!supplier) supplier = 'ALLIANCE HEALTHCARE';
   }
@@ -12136,7 +12167,7 @@ async function extractBcFromBase64(base64, filename) {
     if (existing2) {
       existing2.qte = (existing2.qte||0) + (qte||0); // additionner les boîtes
     } else {
-      _bcItems.push({designation, ean, qte: qte||0, manuscrit: false, eanInvalid: isCip7Code || !isValidEAN13(ean), isCip7: isCip7Code});
+      _bcItems.push({designation, ean, qte: qte||0, manuscrit: false, eanInvalid: isCip7Code || !isValidEAN13(ean), isCip7: isCip7Code, src: 'pdf'});
     }
   }
 
