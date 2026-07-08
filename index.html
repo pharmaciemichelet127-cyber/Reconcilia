@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z72';
+const APP_VERSION = '2.0.20260708z73';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11536,7 +11536,7 @@ function renderBcTable() {
       // Désignation — libellé fixe (non éditable). Saisie possible uniquement si "⚠ À COMPLÉTER".
       const tdDes = document.createElement('td');
       tdDes.style.cssText = 'padding:18px 16px;vertical-align:middle;font-size:14px;font-weight:600;max-width:300px';
-      const isPlaceholder = item.designation === '⚠ À COMPLÉTER';
+      const isPlaceholder = item.designation === '⚠ À COMPLÉTER' || item.designation === '—' || !(item.designation || '').trim();
       if (forPrint) {
         tdDes.textContent = isPlaceholder ? '' : item.designation;
       } else if (isPlaceholder) {
@@ -12051,14 +12051,16 @@ async function extractBcFromBase64(base64, filename) {
   // ── Extraction ligne par ligne ─────────────────────────────────────────
   const learnedEanX = []; const learnedQtyX = [];
 
-  for (const line of allLines) {
+  for (let li = 0; li < allLines.length; li++) {
+    const line = allLines[li];
     const allCells = line.cells;
     // EAN-13 ou CIP7 (CERP) cherché dans la ligne
     let eanIdx = -1;
     for (let i = 0; i < allCells.length; i++) {
       const t = allCells[i].text.replace(/\s/g,'');
       if (isValidEAN13(t) || is13Digits(t)) { eanIdx = i; break; }
-      if (isCIP7(t) && i < 4) { eanIdx = i; break; } // CIP7 CERP dans les 4 premières colonnes
+      // CIP7 réservé aux BL CERP — sur Alliance/Cencora les codes 7 chiffres sont des n° de lot
+      if (!isCencora && isCIP7(t) && i < 4) { eanIdx = i; break; }
     }
     if (eanIdx < 0) continue;
     const rawCode = allCells[eanIdx].text.replace(/\s/g,'');
@@ -12079,6 +12081,28 @@ async function extractBcFromBase64(base64, filename) {
         if (cell.text && !/^\d+$/.test(cell.text.replace(/\s/g,''))) designation += (designation?' ':'')+cell.text;
       }
     }
+    // Format Alliance/Cencora : colonne "LIBELLE / CIP-GTIN" empilée —
+    // le libellé est imprimé sur la ligne AU-DESSUS du code.
+    const desFlat = (designation || '').replace(/\s/g,'');
+    const desGarbage = /^\d{6}[A-Z]{2,4}\d+/.test(desFlat) || /^CDE[:.]/i.test(desFlat) || /^\d{2}\/\d{2}\/\d{4}/.test(desFlat);
+    if ((!designation || designation === '—' || designation.length < 4 || desGarbage) && li > 0) {
+      const prev = allLines[li-1];
+      if (prev && prev.page === line.page) {
+        const codeX = allCells[eanIdx].x;
+        let label = '';
+        for (const c of prev.cells) {
+          const t = (c.text || '').trim();
+          if (!t || c.x < codeX - 40) continue;
+          const flat = t.replace(/\s/g,'');
+          // Stop dès qu'on atteint les colonnes suivantes : date, prix décimal, gros code numérique
+          if (/^\d{2}\/\d{2}\/\d{4}$/.test(flat) || /^\d+[,.]\d+$/.test(flat) || /^\d{5,}$/.test(flat)) break;
+          if (/^\d+$/.test(flat)) continue; // petits entiers isolés (QTE CDE / QTE LIV)
+          label += (label ? ' ' : '') + t;
+        }
+        if (label.length >= 4) designation = label;
+      }
+    }
+    if (desGarbage && (designation || '').replace(/\s/g,'') === desFlat) designation = ''; // garbage non remplacé → vider
     if (!designation) designation = '—';
 
     // Quantité : colonne qty si détectée, sinon dernière valeur entière (Alliance)
