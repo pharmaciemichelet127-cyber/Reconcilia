@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z78';
+const APP_VERSION = '2.0.20260708z79';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11724,7 +11724,7 @@ async function enrichirLibellesClaude() {
             const isUnknown = /identification requise|non confirm|non trouvé|inconnu|not found|unknown|introuvable/i.test(des);
             if (!isUnknown) {
               _bcItems[idx2].designation = des;
-              _bcItems[idx2].manuscrit = false;
+              if (!_bcIsCommande) _bcItems[idx2].manuscrit = false;
               // Mettre à jour l'EAN si Claude l'a corrigé
               if (it.ean && String(it.ean) !== _bcItems[idx2].ean && isValidEAN13(String(it.ean))) {
                 _bcItems[idx2].ean = String(it.ean);
@@ -12035,9 +12035,15 @@ Format :
             const isCip7Code = isCIP7(rawEan);
             const existing = _bcItems.find(x=>x.ean===rawEan);
             if (existing) {
-              // Ligne déjà créée par pdf.js : compléter le libellé manquant ou garbage avec celui de la vision
-              const exBad = isBcDesGarbage(existing.designation);
-              if (exBad && des1 !== '⚠ À COMPLÉTER') existing.designation = des1;
+              // Ligne déjà créée par pdf.js : le libellé vision gagne si celui de pdf.js est
+              // manifestement plus pauvre (garbage, trop court, ou fragment tronqué type "ÇPN BTO")
+              if (des1 !== '⚠ À COMPLÉTER') {
+                const exDes = (existing.designation || '').trim();
+                const exBad = isBcDesGarbage(exDes)
+                  || exDes.length < 8
+                  || (des1.length >= 10 && exDes.length < des1.length * 0.6);
+                if (exBad) existing.designation = des1;
+              }
               if (existing.src === 'vision') {
                 existing.qte = (existing.qte||0) + (parseInt(it.qte)||0); // doublon vision réel : additionner
               } else if (!existing.qte) {
@@ -12120,6 +12126,11 @@ async function extractBcFromBase64(base64, filename) {
   else if (!_bcTitle && filename) _bcTitle = filename.replace(/\.pdf$/i,'');
   if (supplier) _bcSupplier = supplier;
   if (isCencora) _bcSupplier = 'ALLIANCE HEALTHCARE';
+  // Bon de commande détecté dès le texte : colonnes PPHT/Palier/Remise ou en-tête Offre/Booster
+  // (les BL n'ont ni PPHT ni Palier — ils ont "P.U H.T")
+  if (flatText.includes('ppht') || flatText.includes('palier') || flatText.includes('booster') || /offre\s*:/.test(rawText.toLowerCase())) {
+    _bcIsCommande = true;
+  }
   const knownFormat = getBcFormat(supplier);
 
   // Détecter colonnes Quantité et PFHT
@@ -12205,8 +12216,11 @@ async function extractBcFromBase64(base64, filename) {
     if (!designation) designation = '—';
 
     // Quantité : colonne qty si détectée, sinon dernière valeur entière (Alliance)
+    // ⚠ Sur un bon de commande : quantité TOUJOURS vide (le Palier serait pris pour une quantité)
     let qte = 0;
     let manuscrit = false;
+    if (_bcIsCommande) { manuscrit = true; }
+    else {
     if (qtyColX !== null) {
       const qtyCell = afterEanCells.find(c => Math.abs(c.x - qtyColX) < 80);
       if (qtyCell) {
@@ -12230,6 +12244,7 @@ async function extractBcFromBase64(base64, filename) {
         if (!isNaN(n) && n > 0 && n < 10000) { qte = n; learnedQtyX.push(cell.x); break; }
       }
     }
+    } // fin else (pas un bon de commande)
 
     const isCip7Code = isCIP7(ean);
     const existing2 = _bcItems.find(it=>it.ean===ean);
