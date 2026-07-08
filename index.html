@@ -725,6 +725,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
     ReconcilIA
     <span class="logo-badge" id="version-badge" title="Version">EAN</span>
     <span id="app-version-display" style="font-size:10px;font-weight:500;color:var(--ink2);opacity:0.7"></span>
+    <span id="auto-sync-badge" onclick="syncOneDrive()" title="Auto-sync" style="display:none;align-items:center;gap:4px;font-size:10px;color:var(--green);background:var(--green-light);border-radius:20px;padding:2px 8px;cursor:pointer;font-weight:600"></span>
     <div id="od-status-badge" onclick="signIn()" style="display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;background:rgba(220,38,38,0.12);color:var(--danger);border:1px solid var(--danger);white-space:nowrap" title="Cliquer pour se connecter à OneDrive">
       <span>☁️</span><span id="od-badge-label">🔑 Se connecter</span>
     </div>
@@ -3644,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260707z53';
+const APP_VERSION = '2.0.20260708z70';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -3684,7 +3685,47 @@ document.addEventListener('DOMContentLoaded', () => {
   localStorage.removeItem('reconcilia-mobile-nav-config');
   mobileNavConfig = null;
   renderMobileNav();
-}); 
+});
+
+// ── Auto-sync OneDrive toutes les 60 secondes ────────────────
+let _autoSyncInterval = null;
+let _autoSyncCountdown = 60;
+let _autoSyncIsSyncing = false;
+
+function startAutoSync() {
+  if (_autoSyncInterval) return; // déjà actif
+  _autoSyncCountdown = 60;
+  updateAutoSyncBadge();
+  _autoSyncInterval = setInterval(async () => {
+    _autoSyncCountdown--;
+    if (_autoSyncCountdown <= 0) {
+      _autoSyncCountdown = 60;
+      if (!_autoSyncIsSyncing && _odToken) {
+        _autoSyncIsSyncing = true;
+        updateAutoSyncBadge('⏳');
+        try { await syncOneDrive(); } catch(e) {}
+        _autoSyncIsSyncing = false;
+      }
+    }
+    updateAutoSyncBadge();
+  }, 1000);
+  logActivity('🔄 Auto-sync activé (toutes les 60s)', 'info');
+}
+
+function stopAutoSync() {
+  if (_autoSyncInterval) { clearInterval(_autoSyncInterval); _autoSyncInterval = null; }
+  updateAutoSyncBadge();
+}
+
+function updateAutoSyncBadge(icon) {
+  const el = document.getElementById('auto-sync-badge');
+  if (!el) return;
+  if (!_autoSyncInterval) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.textContent = (icon || '🔄') + ' ' + (_autoSyncIsSyncing ? 'Sync…' : _autoSyncCountdown + 's');
+  el.title = 'Auto-synchronisation OneDrive — prochain sync dans ' + _autoSyncCountdown + 's\nCliquer pour synchroniser maintenant';
+}
+ 
 const FICHES_LABO_DATA = [{"nom": "ANATONIC", "franco": "3 paires ou 70 €", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "ARKOPHARMA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "AVENE", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BAUSCH LOMB", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BAYER", "franco": "72 unités", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BIOSYNEX", "franco": "", "contact": "Timothé CHUSIT — Délégué Pharmaceutique", "delai": "", "email": "timothe.chusit@biosynex.com", "notes": "Coordonnées relevées sur carte de visite.", "site": "https://www.biosynex.com", "tel": "+33 7 86 67 61 14", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "BOIRON", "franco": "24 unités", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "COOPER RESEAU SANTE", "franco": "", "contact": "Frédéric GIUSTI", "delai": "60 J", "email": "frederic.giusti@cooperconsumerhealth.com", "notes": "Email service client (commande/facturation) : mailto:serviceclient@cooperconsumerhealth.com", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": "0603034195"}, {"nom": "DOCTEUR B", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EFFIK", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EG", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "EXPANSCIENCE", "franco": "250 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "GALLIA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "GIBAUD", "franco": "1 boîte", "contact": "Audrey PELLISSIER", "delai": "", "email": "audrey.pellissier@innothera.com", "notes": "Service relation client : 0 800 400 067 (service & appel gratuits)\nEmail commandes : mailto:commandes@innothera.com\nFax : 01 46 15 28 32\nTélétransmission par Pharmaml : contacter le 0 800 400 067", "site": "https://www.easydeli.com", "tel": "0 800 400 067", "marques": "", "logistique": "", "numClient": "", "portable": "+33 6 81 49 46 60"}, {"nom": "GILBERT", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "HORUS PHARMA", "franco": "", "contact": "Anne-Laure CLEMENT", "delai": "", "email": "anne-laure.clement@horus-pharma.com", "notes": "Adresse : 22, allée Camille MUFFAT, INEDI 5, 06200 Nice\nFax : 04 93 19 54 09", "site": "https://www.horus-pharma.com", "tel": "04 93 19 33 75", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IBSA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IDC PHARMA", "franco": "150 € HT", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "IDES PHARMA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "Algostéril, Braun, Brothier, Béaba, Calypol, Celostim, Clevorox, Coalgan, Coolcaps, Coquelusedal, Dr Herma, Elerte, Jolly Jatel, KAZ, Movicol, MyVariations, Nausicalm, Nociceptol, Norgine, OTC Medical, Oystershell, Panda Tea, Pistasl, Polidis, Rhinotrophyl, Schmidt's, Spasmine, Taldo, Techni-Pharma, Transillium, Vicks, Zecto, Zeiss", "logistique": "Réseau : IDES PHARMA\nLogisticiens repérés : ALLOGA, EURODEP, LAPHAL", "numClient": "", "portable": ""}, {"nom": "IDIM PHARMA", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "3M - Nexcare, Aquatabs, Ascensia, Beesline, BioGaia, ColdHot, Corman, Cottony, Delabarre, Demak'Up, Essity, Everlab, Fingertop, Futuro, Hero, LAPSA, Leurquin, Lotus, Manouka, Organyc, Replens, Ristabil, Sea-Band, Sofibel, Sovedis, Stérimar, TheBreathCo, Waterpik", "logistique": "Réseau : IDM PHARMA\nLogisticiens repérés : ALLOGA, CSE Global, EURODEP, MOVIANTO", "numClient": "", "portable": ""}, {"nom": "KENVUE", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "LA ROCHE POSAY", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "LOHMAN RAUSCHER", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MAJORELLE", "franco": "175 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MARQUE VERTE", "franco": "150 € ou 300 € net", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "MY VARIATIONS", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "OPELLA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PERRIGO", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PODOWELL", "franco": "1 paire", "contact": "", "delai": "30 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PROCTER & GAMBLE", "franco": "300 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "PURESSENTIEL", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "TEVA", "franco": "1 €", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "THEA", "franco": "", "contact": "", "delai": "60 J", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "THERA°PEARL", "franco": "", "contact": "", "delai": "", "email": "", "notes": "", "site": "", "tel": "", "marques": "", "logistique": "", "numClient": "", "portable": ""}, {"nom": "URGO", "franco": "", "contact": "ROLLAND Thomas", "delai": "60 J", "email": "trolland@urgo.fr", "notes": "", "site": "", "tel": "03 80 44 71 21", "marques": "", "logistique": "Délai de règlement : 60 jours date de facture.\nFax : 03 80 44 70 02.\nDéléguée : Pascale Soulinac – 06 35 51 89 85.\nCommande urgente : mailto:aurelie.rousseau@fr.urgo.com", "numClient": "133067", "portable": "06 88 20 81 39"}];
 let fichasLaboEdits = {}; // surcharges locales
 const MSAL_CONFIG={auth:{clientId:'f48939f5-b2fc-4e2e-8fcb-9bd93644799a',authority:'https://login.microsoftonline.com/common',redirectUri:window.location.origin},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}};
@@ -3936,6 +3977,7 @@ function updateAuthUI(connected){
   if(connected&&currentUser){
     const name=currentUser.name||currentUser.username||'Utilisateur';
     if(banner){banner.className='onedrive-banner connected';banner.innerHTML=`<div class="od-icon">✅</div><div class="od-info"><div class="od-title">OneDrive connecté</div><div class="od-sub connected">Connecté : ${name} · Historique sauvegardé sur OneDrive</div></div>`;}
+    startAutoSync();
     const av=_el('nav-avatar');if(av)av.textContent=name.charAt(0).toUpperCase();
     const nu=_el('nav-username');if(nu)nu.textContent=name;
     if(badge){badge.style.background='rgba(22,163,74,0.1)';badge.style.color='var(--green)';badge.style.borderColor='var(--green)';badge.style.cursor='default';badge.onclick=null;}
@@ -4887,6 +4929,10 @@ async function syncRootFolder(token) {
     let delay = 0;
     for (const file of files) {
       const fn = normalize(file.name);
+      // Bloquer les fichiers déjà marqués comme trop lourds
+      if (rejectedIds.has(file.id) || rejectedIds.has('name:' + file.name)) {
+        continue; // silencieux — plus de message à chaque sync
+      }
       // Doublon par odId OU par nom de fichier dans tous les stores
       const fn2 = normalize(file.name).replace(/\s+/g,'');
       // Détection doublon : même odId OU même nom (normalisé, sans espaces) dans BL, FAC, queue ou historique
@@ -5047,8 +5093,15 @@ async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
     if (b64SizeMB > 4) {
       doc.status = 'warn';
       doc.fields.fournisseur = '⚠ Fichier trop lourd (' + b64SizeMB.toFixed(1) + 'MB)';
-      logActivity(`⚠ "${doc.name}" — trop lourd (${b64SizeMB.toFixed(1)}MB > 4MB). Réduisez la résolution du scanner.`, 'warn');
-      toast(`⚠ "${doc.name.slice(0,30)}" trop lourd — réduisez la résolution du scanner (200 DPI max)`, 'warn');
+      // Ajouter à rejectedIds pour ne plus jamais retenter ce fichier
+      if (doc.odId) rejectedIds.add(doc.odId);
+      if (doc.name) rejectedIds.add('name:' + doc.name); // aussi par nom
+      logActivity(`⚠ "${doc.name}" — trop lourd, ignoré définitivement (${b64SizeMB.toFixed(1)}MB > 4MB). Réduisez la résolution du scanner.`, 'warn');
+      // Toast une seule fois (pas à chaque sync)
+      if (!sessionStorage.getItem('warned-heavy-' + doc.name)) {
+        toast(`⚠ "${doc.name.slice(0,30)}" trop lourd — réduisez la résolution du scanner (200 DPI max)`, 'warn');
+        sessionStorage.setItem('warned-heavy-' + doc.name, '1');
+      }
       renderDocs(); saveStateLocal();
       return;
     }
@@ -9238,10 +9291,25 @@ function _renderMonthHeaderFAC(key, docs, collapsed) {
 // Générer codes-barres depuis une commande (pour saisie LGPI)
 async function generateBcFromCommande(cmdId) {
   const cmd = commandesList.find(c => c.id === cmdId);
-  if (!cmd) return;
+  if (!cmd) { toast('Commande introuvable', 'error'); return; }
 
+  // Basculer IMMÉDIATEMENT vers l'onglet Codes-barres
+  const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
+  showPage('barcodes', bcBtn);
+
+  // Vider la zone et afficher le nom de la commande immédiatement
   _bcItems = [];
+  const bcWrapInit = document.getElementById('bc-table-wrap');
+  if (bcWrapInit) bcWrapInit.style.display = 'none';
+  const printAreaInit = document.getElementById('print-barcode-area');
+  if (printAreaInit) printAreaInit.style.display = 'none';
+  const btnPrintInit = document.getElementById('btn-print-barcodes');
+  if (btnPrintInit) btnPrintInit.style.display = 'none';
+
+  showBcStatus(`⏳ Chargement codes-barres pour ${cmd.fournisseur}…`);
   _bcTitle = (cmd.fournisseur || '') + (cmd.numero ? ' — Cmd N° ' + cmd.numero : '') + (cmd.dateDisplay ? ' · ' + cmd.dateDisplay : '');
+
+  try {
 
   // Cas 1 : produits déjà extraits (EAN disponibles)
   if (cmd.produits?.length) {
@@ -9260,6 +9328,22 @@ async function generateBcFromCommande(cmdId) {
 
   // Cas 2 : pages scannées → extraction IA
   if (cmd.pages?.length) {
+    // Vérifier si au moins une page a son contenu disponible
+    const pagesWithContent = cmd.pages.filter(p => 
+      (typeof p === 'string' && p.length > 100) || 
+      (typeof p === 'object' && (p.base64 || p.odUrl))
+    );
+
+    if (pagesWithContent.length === 0) {
+      // Pages vides (base64 strippé) → essayer le BL associé
+      if (cmd.blId) {
+        toast('📄 Pages non disponibles — utilisation du BL associé…', 'info');
+        await loadBcFromStore(cmd.blId);
+        return;
+      }
+      toast('Les pages de cette commande ne sont plus disponibles. Ouvre l\'onglet BL et clique sur 🔍 pour générer les codes-barres.', 'warn');
+      return;
+    }
     const bcBtn = document.querySelector('.nav-tab[onclick*="barcodes"]');
     showPage('barcodes', bcBtn);
     showBcStatus(`🤖 Analyse des ${cmd.pages.length} page(s) de la commande ${cmd.fournisseur}…`);
@@ -9325,8 +9409,9 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
         const items = JSON.parse(text);
         if (Array.isArray(items)) {
           items.forEach(it => {
-            if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-              _bcItems.push({ean:String(it.ean), designation:it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', qte:0, manuscrit:true});
+            if (it.ean && is13Digits(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
+              const eanValid2 = isValidEAN13(String(it.ean));
+              _bcItems.push({ean:String(it.ean), designation:it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', qte:0, manuscrit:true, eanInvalid:!eanValid2});
             }
           });
         }
@@ -9341,12 +9426,47 @@ Retourne UNIQUEMENT un JSON valide sans backticks :
       toast(`✅ ${_bcItems.length} EAN-13 extraits de la commande ${cmd.fournisseur}`, 'success');
       logActivity(`🔍 Commande ${cmd.fournisseur} : ${_bcItems.length} EAN extraits`, 'ok');
     } else {
-      toast('Aucun EAN-13 trouvé. Les pages sont peut-être hors ligne — reconnectez OneDrive et réessayez.', 'warn');
+      // Aucun EAN trouvé depuis les pages → essayer le BL associé
+      if (cmd.blId) {
+        toast('📄 Pages sans EAN — utilisation du BL associé…', 'info');
+        await loadBcFromStore(cmd.blId);
+      } else {
+        // Chercher un BL du même fournisseur dans store.bl
+        const blMatch = store.bl.find(d =>
+          d.status === 'ok' &&
+          d.fields?.fournisseur &&
+          normalize(d.fields.fournisseur).includes(normalize(cmd.fournisseur).split(' ')[0])
+        );
+        if (blMatch) {
+          toast(`📄 BL trouvé pour ${cmd.fournisseur} — génération codes-barres…`, 'info');
+          await loadBcFromStore(blMatch.id);
+        } else {
+          // Afficher un bouton pour aller directement au BL filtré
+          hideBcStatus();
+          const bcWrap = document.getElementById('bc-table-wrap');
+          if (bcWrap) {
+            bcWrap.style.display = '';
+            bcWrap.innerHTML = `<div style="padding:40px;text-align:center">
+              <div style="font-size:48px;margin-bottom:16px">🔍</div>
+              <div style="font-size:16px;font-weight:700;margin-bottom:8px">Aucun BL ${cmd.fournisseur} trouvé</div>
+              <div style="font-size:13px;color:var(--ink2);margin-bottom:20px">Le BL de cette commande n'est pas encore dans ReconcilIA.</div>
+              <button class="btn btn-primary" onclick="goToBLTab('${normalize(cmd.fournisseur).split(' ')[0]}')">
+                📦 Voir les BL ${cmd.fournisseur} →
+              </button>
+            </div>`;
+          }
+        }
+      }
     }
     return;
   }
 
   toast('Cette commande n\'a ni produits EAN ni pages scannées', 'warn');
+  } catch(e) {
+    hideBcStatus();
+    logActivity('⚠ Codes-barres commande : ' + e.message, 'warn');
+    toast('Erreur : ' + e.message, 'error');
+  }
 }
 
 // Visualiser un document BL/Facture depuis son docId dans store
@@ -11293,6 +11413,49 @@ function isValidEAN13(code) {
   return (10 - sum%10)%10 === d[12];
 }
 
+// Convertit un CIP7 (7 chiffres) en EAN-13 pharmaceutique français
+// Formule : "34009" + CIP7 + clé de contrôle EAN-13
+function cip7ToEAN13(cip7) {
+  const s = String(cip7).replace(/\s/g,'');
+  if (!/^\d{7}$/.test(s)) return null;
+  const base = '34009' + s; // 12 chiffres
+  const d = base.split('').map(Number);
+  const sum = d.reduce((acc, v, i) => acc + v * (i%2===0 ? 1 : 3), 0);
+  const check = (10 - sum%10)%10;
+  return base + check;
+}
+
+// Vérifie si c'est un CIP7 (7 chiffres)
+function isCIP7(code) {
+  return /^\d{7}$/.test(code.replace(/\s/g,''));
+}
+
+// Vérifie si c'est un code à 13 chiffres (même clé incorrecte)
+function is13Digits(code) {
+  return /^\d{13}$/.test(code);
+}
+
+// Corrige la clé de contrôle EAN-13 (recalcule le dernier chiffre)
+// Utile quand l'OCR a mal lu le dernier chiffre
+function correctEAN13checkDigit(code) {
+  if (!/^\d{13}$/.test(code)) return null;
+  const d = code.slice(0,12).split('').map(Number);
+  const sum = d.reduce((acc, v, i) => acc + v * (i%2===0 ? 1 : 3), 0);
+  const correctCheck = (10 - sum%10)%10;
+  return code.slice(0,12) + correctCheck;
+}
+
+// Tente de corriger un EAN invalide en essayant la correction du dernier chiffre
+// et en cherchant si un seul chiffre parmi les 12 premiers est faux
+function tryFixEAN13(code) {
+  if (isValidEAN13(code)) return code;
+  if (!is13Digits(code)) return null;
+  // Essai 1 : corriger le dernier chiffre
+  const fixed = correctEAN13checkDigit(code);
+  if (fixed && fixed !== code) return fixed;
+  return code; // retourne tel quel
+}
+
 function handleBcDrop(event) {
   const files = [...event.dataTransfer.files].filter(f => f.type==='application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
   if (!files.length) { toast('Veuillez déposer des fichiers PDF', 'warn'); return; }
@@ -11384,8 +11547,12 @@ function renderBcTable() {
 
       // EAN
       const tdEan = document.createElement('td');
-      tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:var(--ink2);vertical-align:middle;letter-spacing:1px;white-space:nowrap';
-      tdEan.textContent = item.ean;
+      const eanColor = item.isCip7 ? '#7c3aed' : item.eanInvalid ? 'var(--warn)' : 'var(--ink2)';
+      const eanTitle = item.isCip7 ? 'title="Code CIP7 CERP — EAN-13 calculé automatiquement"' : item.eanInvalid ? 'title="⚠ Clé EAN-13 incorrecte — vérifier"' : '';
+      tdEan.style.cssText = 'padding:18px 16px;font-family:JetBrains Mono,monospace;font-size:13px;color:'+eanColor+';vertical-align:middle;letter-spacing:1px;white-space:nowrap';
+      const cip7Ean = item.isCip7 ? cip7ToEAN13(item.ean) : null;
+      const eanSuffix = item.eanInvalid && !item.isCip7 ? ' ⚠' : '';
+      tdEan.innerHTML = `<span ${eanTitle}>${item.ean}${eanSuffix}${cip7Ean ? '<div style="font-size:11px;color:var(--ink2);margin-top:2px;letter-spacing:1px">→ '+cip7Ean+'</div>' : ''}</span>`;
       tr.appendChild(tdEan);
 
       // Code-barres SVG — grand et aéré
@@ -11420,7 +11587,14 @@ function renderBcTable() {
       // Générer le code-barres : large, haut, bien margé
       requestAnimationFrame(() => {
         try {
-          JsBarcode('#'+svgId, item.ean, {
+          // Utiliser EAN corrigé si disponible, ou convertir CIP7→EAN13 provisoire
+          let eanForBarcode = item.ean;
+          if (item.isCip7) {
+            eanForBarcode = cip7ToEAN13(item.ean) || item.ean;
+          } else if (item.eanInvalid) {
+            eanForBarcode = correctEAN13checkDigit(item.ean) || item.ean;
+          }
+          JsBarcode('#'+svgId, eanForBarcode, {
             format: 'EAN13',
             width: forPrint ? 2.2 : 2,
             height: forPrint ? 70 : 65,
@@ -11458,11 +11632,15 @@ async function enrichirLibellesClaude() {
 
     for (let i = 0; i < _bcItems.length; i += batchSize) {
       const batch = _bcItems.slice(i, i + batchSize);
-      const lines = batch.map((it, j) =>
-        (i+j+1) + '. CIP13=' + it.ean + ' | OCR="' + (it.designation !== '⚠ À COMPLÉTER' ? it.designation : '?') + '"'
-      ).join('\n');
+      const lines = batch.map((it, j) => {
+        const ocr = it.designation !== '⚠ À COMPLÉTER' ? it.designation.trim() : '';
+        // Si OCR trop court ou peu fiable (< 8 chars), ne pas l'envoyer — se fier au CIP13 seul
+        const ocrHint = ocr.length >= 8 ? ' | OCR="' + ocr + '"' : '';
+        return (i+j+1) + '. CIP13=' + it.ean + ocrHint;
+      }).join('\n');
 
-      const prompt = 'Tu es un expert en médicaments français. Pour chaque ligne, tu as un CIP13 et un libellé OCR (parfois corrompu). Retourne le nom officiel exact du médicament.\n\nRetourne UNIQUEMENT ce JSON (même ordre) :\n[{"ean":"CODE","designation":"NOM EXACT"}]\n\nLignes :\n' + lines;
+      const hasCip7 = batch.some(it => it.isCip7);
+      const prompt = 'Tu es expert pharmacie/parapharmacie France. Pour chaque ligne, tu as' + (hasCip7 ? ' un code CIP7 (7 chiffres, référence interne CERP grossiste)' : ' un code CIP13') + ' et un libellé (parfois OCR corrompu).\nRetourne pour chaque ligne :\n- "ean" : le code EAN-13 qui se trouve sur la BOÎTE PHYSIQUE du produit (13 chiffres). Pour les médicaments remboursables : commence par 34009. Pour cosmétiques/parapharmacie : code EAN du fabricant.\n- "designation" : nom commercial complet officiel du produit\n\nRetourne UNIQUEMENT un JSON valide (même ordre) :\n[{"ean":"3400907646018","designation":"MEPORE PANS ADH ST 9X15CM BT10"}]\n\nLignes :\n' + lines;
 
       showBcStatus('🔍 Lot ' + (Math.floor(i/batchSize)+1) + '/' + Math.ceil(_bcItems.length/batchSize) + '…');
 
@@ -11482,10 +11660,27 @@ async function enrichirLibellesClaude() {
       const items = JSON.parse(jsonMatch[0]);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          const idx2 = _bcItems.findIndex(x => x.ean === String(it.ean));
+          // Chercher par EAN exact OU par EAN corrigé
+          let idx2 = _bcItems.findIndex(x => x.ean === String(it.ean));
+          if (idx2 < 0 && it.ean) {
+            // Claude a peut-être corrigé l'EAN — chercher le code original le plus proche
+            idx2 = _bcItems.findIndex(x => x.eanInvalid && tryFixEAN13(x.ean) === String(it.ean));
+          }
           if (idx2 >= 0 && it.designation && it.designation.trim() && it.designation !== '?') {
             _bcItems[idx2].designation = it.designation.trim();
             _bcItems[idx2].manuscrit = false;
+            // Mettre à jour l'EAN si Claude l'a corrigé
+            if (it.ean && String(it.ean) !== _bcItems[idx2].ean && isValidEAN13(String(it.ean))) {
+              _bcItems[idx2].ean = String(it.ean);
+              _bcItems[idx2].eanInvalid = false;
+            } else if (_bcItems[idx2].eanInvalid) {
+              // Essayer la correction automatique (dernier chiffre)
+              const autoFixed = correctEAN13checkDigit(_bcItems[idx2].ean);
+              if (autoFixed && isValidEAN13(autoFixed)) {
+                _bcItems[idx2].ean = autoFixed;
+                _bcItems[idx2].eanInvalid = false;
+              }
+            }
             enriched++;
           }
         });
@@ -11552,6 +11747,15 @@ async function enregistrerCommeCommande() {
 
   toast(`✅ Commande "${fournisseur}" créée — ${_bcItems.length} produits`, 'success');
   logActivity(`📋 Commande créée depuis codes-barres : ${fournisseur} — ${_bcItems.length} produits`, 'ok');
+}
+
+function goToBLTab(fournisseurFilter) {
+  const blBtn = document.querySelector('.nav-tab[onclick*="\'bl\'"]');
+  showPage('bl', blBtn);
+  setTimeout(() => {
+    const input = document.getElementById('docs-filter-labo-bl2');
+    if (input) { input.value = fournisseurFilter; renderDocsBL(); }
+  }, 200);
 }
 
 function clearBarcodes() {
@@ -11674,7 +11878,7 @@ async function extractBcVisionClaude(file) {
   const pdf = await pdfjsLib.getDocument({data: new Uint8Array(arrayBuffer)}).promise;
 
   // Traiter CHAQUE page séparément (1 image par appel) pour ne rater aucun produit
-  const totalPages = Math.min(pdf.numPages, 8);
+  const totalPages = Math.min(pdf.numPages, 30);
 
   for (let p = 1; p <= totalPages; p++) {
     showBcStatus(`🤖 Rendu page ${p}/${totalPages}…`);
@@ -11690,16 +11894,30 @@ async function extractBcVisionClaude(file) {
     const imgs = [jpeg];
     const bi = p - 1;
     const batches = { length: totalPages };
-    const prompt = `Tu analyses une page d'un bon de commande pharmaceutique (Alliance Healthcare, Cencora ou autre).
+    const prompt = `Tu analyses une page d'un document pharmaceutique. Il peut s'agir d'un bon de livraison CERP, d'un bon de commande Alliance Healthcare, ou d'un bon de livraison TEVA/Biosynex.
 
-Pour CHAQUE ligne produit visible (peu importe la section : LES STARS, DESTINATION ÉTÉ, LES INDISPENSABLES, LES ESSENTIELLES, etc.) :
-- Repère le code CIP13 (13 chiffres commençant par 3400...)
-- Copie le LIBELLÉ EXACT du produit, LETTRE PAR LETTRE, tel qu'il est imprimé. Ne change rien, ne résume pas, ne corrige pas.
-- Ignore toutes les colonnes de prix (PFHT, PPHT, Remise%, Prix remisé, Palier).
-- Mets "qte":0 pour toutes les lignes.
+SELON LE FORMAT DÉTECTÉ :
 
-Retourne UNIQUEMENT un JSON valide, sans backticks :
-[{"ean":"3400930292907","designation":"MOUNJARO 2,5MG KWIKPEN 2,4ML 1","qte":0},{"ean":"3400938322446","designation":"AVAMYS 27,5µG/PULV NAS 120DOS1","qte":0}]`;
+1. BON DE LIVRAISON CERP (logo CERP visible, colonnes : code CIP 7 chiffres | désignation | qté livrée) :
+   - Extrait le code CIP à 7 CHIFFRES (ex: 7646018, 3272727, 3405246)
+   - Copie le libellé EXACT
+   - Prends la quantité livrée (colonne "livr." ou "Qtés livrées")
+
+2. BON DE LIVRAISON ALLIANCE HEALTHCARE (en-tête "BON DE LIVRAISON ET DE TRAÇABILITÉ") :
+   - Colonnes : QTE CDE | QTE LIV | LIBELLÉ (ligne 1) puis EAN/CIP-GTIN 13 chiffres sur la ligne suivante
+   - EAN peut commencer par n'importe quel chiffre (3664, 3111, 5712, 3400...)
+   - Prends QTE LIV comme quantité
+
+3. BON DE COMMANDE Alliance Healthcare (OFFRE BOOSTER, colonnes CIP13 | libellé | prix | quantité manuscrite) :
+   - Code CIP à 13 CHIFFRES commençant par 3400
+   - Libellé exact, mets "qte":0
+
+4. BON DE LIVRAISON TEVA/autre (format EAN-13 ou "EAN :XXXX") :
+   - Code EAN à 13 chiffres
+   - Quantité livrée
+
+Retourne UNIQUEMENT un JSON valide sans backticks (inclus TOUTES les lignes produits) :
+[{"ean":"3664492022932","designation":"ALVITYL ACEROLA 1000 CROQ CPR30","qte":1},{"ean":"7646018","designation":"MEPORE PANS ADH ST 9X15CM 10","qte":2}]`;
 
     const content = imgs.map(img => ({
       type: 'image', source: {type: 'base64', media_type: 'image/jpeg', data: img}
@@ -11718,8 +11936,19 @@ Retourne UNIQUEMENT un JSON valide, sans backticks :
       const items = JSON.parse(text);
       if (Array.isArray(items)) {
         items.forEach(it => {
-          if (it.ean && isValidEAN13(String(it.ean)) && !_bcItems.find(x=>x.ean===String(it.ean))) {
-            _bcItems.push({designation: it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER', ean: String(it.ean), qte: 0, manuscrit: true});
+          let rawEan = String(it.ean).replace(/\s/g,'');
+          const des1 = it.designation&&it.designation.trim()&&it.designation!=='—'?it.designation.trim():'⚠ À COMPLÉTER';
+          // Accepter CIP7 (CERP) et EAN-13 — la conversion se fera via enrichissement
+          if (is13Digits(rawEan) || isCIP7(rawEan)) {
+            const eanValid = isValidEAN13(rawEan);
+            const isCip7Code = isCIP7(rawEan);
+            const existing = _bcItems.find(x=>x.ean===rawEan);
+            if (existing) {
+              // Même code : additionner les quantités (2 boîtes du même article)
+              existing.qte = (existing.qte||0) + (parseInt(it.qte)||0);
+            } else {
+              _bcItems.push({designation: des1, ean: rawEan, qte: parseInt(it.qte)||0, manuscrit: false, eanInvalid: !eanValid || isCip7Code, isCip7: isCip7Code});
+            }
           }
         });
       }
@@ -11727,7 +11956,7 @@ Retourne UNIQUEMENT un JSON valide, sans backticks :
       logActivity(`⚠ Vision IA page ${p} : ${e.message}`, 'warn');
     }
     // Pause entre les pages pour éviter le rate limit
-    if (p < totalPages) await new Promise(r => setTimeout(r, 1500));
+    if (p < totalPages) await new Promise(r => setTimeout(r, 2000));
   }
 
   if (_bcItems.length) logActivity(`🤖 Vision IA : ${_bcItems.length} EAN extraits de "${file.name}"`, 'ok');
@@ -11766,11 +11995,18 @@ async function extractBcFromBase64(base64, filename) {
   }
   allLines.sort((a,b) => b.y - a.y);
 
-  const supplier = detectSupplierFromText(rawText) || 'ALLIANCE';
+  // Détecter le fournisseur depuis le texte extrait
+  let supplier = detectSupplierFromText(rawText) || '';
   if (rawText.toLowerCase().includes('cencora') || rawText.toLowerCase().includes('alliance healthcare') || rawText.toLowerCase().includes('pfht')) {
     isCencora = true;
+    if (!supplier) supplier = 'ALLIANCE HEALTHCARE';
   }
-  if (supplier && !_bcTitle.includes(supplier)) _bcTitle = (supplier + ' — ' + _bcTitle).slice(0,80);
+  // Détecter CERP
+  if (rawText.toLowerCase().includes('cerp') || rawText.toLowerCase().includes('pharmacie rhône méditerranée')) {
+    if (!supplier) supplier = 'CERP';
+  }
+  if (supplier && !_bcTitle.includes(supplier)) _bcTitle = (supplier + ' — ' + (_bcTitle || filename||'').replace(/\.pdf$/i,'')).slice(0,80);
+  else if (!_bcTitle && filename) _bcTitle = filename.replace(/\.pdf$/i,'');
   const knownFormat = getBcFormat(supplier);
 
   // Détecter colonnes Quantité et PFHT
@@ -11795,13 +12031,16 @@ async function extractBcFromBase64(base64, filename) {
 
   for (const line of allLines) {
     const allCells = line.cells;
-    // EAN cherché n'importe où dans la ligne (avant: NEW !, ★, *2...)
+    // EAN-13 ou CIP7 (CERP) cherché dans la ligne
     let eanIdx = -1;
     for (let i = 0; i < allCells.length; i++) {
-      if (isValidEAN13(allCells[i].text.replace(/\s/g,''))) { eanIdx = i; break; }
+      const t = allCells[i].text.replace(/\s/g,'');
+      if (isValidEAN13(t) || is13Digits(t)) { eanIdx = i; break; }
+      if (isCIP7(t) && i < 4) { eanIdx = i; break; } // CIP7 CERP dans les 4 premières colonnes
     }
     if (eanIdx < 0) continue;
-    const ean = allCells[eanIdx].text.replace(/\s/g,'');
+    const rawCode = allCells[eanIdx].text.replace(/\s/g,'');
+    const ean = rawCode; // garder tel quel — CIP7 ou EAN13, l'enrichissement convertira
     learnedEanX.push(allCells[eanIdx].x);
 
     // Libellé : entre EAN et colonne PFHT (ou première valeur décimale prix)
@@ -11846,8 +12085,12 @@ async function extractBcFromBase64(base64, filename) {
       }
     }
 
-    if (!_bcItems.find(it=>it.ean===ean)) {
-      _bcItems.push({designation, ean, qte: 0, manuscrit: false});
+    const isCip7Code = isCIP7(ean);
+    const existing2 = _bcItems.find(it=>it.ean===ean);
+    if (existing2) {
+      existing2.qte = (existing2.qte||0) + (qte||0); // additionner les boîtes
+    } else {
+      _bcItems.push({designation, ean, qte: qte||0, manuscrit: false, eanInvalid: isCip7Code || !isValidEAN13(ean), isCip7: isCip7Code});
     }
   }
 
