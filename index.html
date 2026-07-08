@@ -3645,7 +3645,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z71';
+const APP_VERSION = '2.0.20260708z72';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -11346,6 +11346,7 @@ function statutsBadgeHtml(statut, autoClosed, autoClosedNote) {
 
 // ════ CODES-BARRES BL — extraction pdf.js + rendu JsBarcode
 let _bcItems = [];   // [{designation, ean, qte}]
+let _bcSupplier = ''; // Fournisseur détecté lors de la dernière extraction (pour auto-enrichissement)
 let _bcTitle  = '';
 
 // ── Mémoire des formats par fournisseur ─────────────────────
@@ -11465,7 +11466,7 @@ function handleBcDrop(event) {
 function handleBcFiles(fileList) {
   const files = [...fileList];
   if (!files.length) return;
-  _bcItems = []; _bcTitle = '';
+  _bcItems = []; _bcTitle = ''; _bcSupplier = '';
   showBcStatus('⏳ Lecture du PDF…');
   // Configurer pdf.js worker
   if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -11487,6 +11488,7 @@ function handleBcFiles(fileList) {
       const added = _bcItems.length - foundByPdfJs;
       renderBcTable();
       toast(`✅ ${_bcItems.length} EAN-13 extraits${added > 0 ? ` (+${added} via vision)` : ''}`, 'success');
+      await autoEnrichLibellesSiAlliance();
     })
     .catch(e => {
       hideBcStatus();
@@ -11531,17 +11533,20 @@ function renderBcTable() {
       // Séparateur visuel fort entre chaque ligne
       tr.style.cssText = 'border-bottom:3px solid var(--border);' + (idx%2===0 ? 'background:var(--surface);' : 'background:var(--surface2);');
 
-      // Désignation — éditable
+      // Désignation — libellé fixe (non éditable). Saisie possible uniquement si "⚠ À COMPLÉTER".
       const tdDes = document.createElement('td');
       tdDes.style.cssText = 'padding:18px 16px;vertical-align:middle;font-size:14px;font-weight:600;max-width:300px';
       const isPlaceholder = item.designation === '⚠ À COMPLÉTER';
       if (forPrint) {
         tdDes.textContent = isPlaceholder ? '' : item.designation;
+      } else if (isPlaceholder) {
+        // Produit non identifié → champ de saisie manuelle
+        tdDes.innerHTML = `<input value="" onchange="_bcItems[${idx}].designation=this.value;this.style.color='var(--ink)';this.style.background='';syncBcPrint()" style="border:none;background:rgba(255,200,0,0.2);border-radius:6px;width:100%;font-family:inherit;font-size:14px;font-weight:600;color:var(--warn)" placeholder="Saisir le libellé">`;
+        tdDes.style.background = 'rgba(255,200,0,0.15)';
       } else {
-        const desColor = isPlaceholder ? 'var(--warn)' : 'var(--ink)';
-        const desBg = isPlaceholder ? 'background:rgba(255,200,0,0.2);border-radius:6px;' : '';
-        tdDes.innerHTML = `<input value="${item.designation.replace(/"/g,'&quot;')}" onchange="_bcItems[${idx}].designation=this.value;this.style.color='var(--ink)';this.style.background='';syncBcPrint()" style="border:none;background:transparent;width:100%;font-family:inherit;font-size:14px;font-weight:600;color:${desColor};${desBg}" placeholder="Saisir le libellé">`;
-        if (isPlaceholder) tdDes.style.background = 'rgba(255,200,0,0.15)';
+        // Libellé connu → texte simple, non modifiable
+        const esc = item.designation.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        tdDes.innerHTML = `<span style="color:var(--ink)">${esc}</span>`;
       }
       tr.appendChild(tdDes);
 
@@ -11617,6 +11622,16 @@ function renderBcTable() {
 function syncBcPrint() {
   const tbodyP = document.getElementById('bc-tbody-print');
   renderBcTable(); // Re-render complet pour sync
+}
+
+// Auto-enrichissement : pour les BL Alliance Healthcare / Cencora, les libellés
+// officiels (base ANSM/Vidal) sont récupérés automatiquement après extraction,
+// sans que l'utilisateur ait besoin de cliquer sur "Enrichir libellés".
+async function autoEnrichLibellesSiAlliance() {
+  if (!_bcItems.length) return;
+  if (!/alliance|cencora/i.test(_bcSupplier || '') && !/alliance|cencora/i.test(_bcTitle || '')) return;
+  toast('🔍 Récupération des libellés officiels (Vidal)…', 'info');
+  await enrichirLibellesClaude();
 }
 
 // Enrichir les libellés via Claude (lookup par CIP13)
@@ -11764,7 +11779,7 @@ function goToBLTab(fournisseurFilter) {
 }
 
 function clearBarcodes() {
-  _bcItems = []; _bcTitle = '';
+  _bcItems = []; _bcTitle = ''; _bcSupplier = '';
   document.getElementById('bc-table-wrap').style.display = 'none';
   document.getElementById('print-barcode-area').style.display = 'none';
   document.getElementById('btn-print-barcodes').style.display = 'none';
@@ -11822,14 +11837,14 @@ async function loadBcFromStore(docId) {
   document.getElementById('bc-bl-search').value = doc.name;
   document.getElementById('bc-bl-results').style.display = 'none';
 
-  _bcItems = []; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
+  _bcItems = []; _bcSupplier = ''; _bcTitle = doc.fields?.ref || doc.name.replace(/\.pdf$/i,'');
 
   // Cas 1 : base64 déjà en mémoire
   if (doc.base64) {
     showBcStatus(`📄 Extraction depuis ReconcilIA : "${doc.name}"…`);
     await extractBcFromBase64(doc.base64, doc.name);
     hideBcStatus();
-    if (_bcItems.length) { renderBcTable(); toast(`✅ ${_bcItems.length} EAN-13 extraits de "${doc.name}"`, 'success'); }
+    if (_bcItems.length) { renderBcTable(); toast(`✅ ${_bcItems.length} EAN-13 extraits de "${doc.name}"`, 'success'); await autoEnrichLibellesSiAlliance(); }
     else toast('Aucun EAN-13 trouvé dans ce BL', 'warn');
     return;
   }
@@ -11868,7 +11883,7 @@ async function loadBcFromStore(docId) {
     await extractBcFromBase64(base64, doc.name);
     hideBcStatus();
 
-    if (_bcItems.length) { renderBcTable(); toast(`✅ ${_bcItems.length} EAN-13 extraits de "${doc.name}"`, 'success'); }
+    if (_bcItems.length) { renderBcTable(); toast(`✅ ${_bcItems.length} EAN-13 extraits de "${doc.name}"`, 'success'); await autoEnrichLibellesSiAlliance(); }
     else toast('Aucun EAN-13 trouvé dans ce BL (PDF image ?)', 'warn');
   } catch(e) {
     hideBcStatus();
@@ -12012,6 +12027,8 @@ async function extractBcFromBase64(base64, filename) {
   }
   if (supplier && !_bcTitle.includes(supplier)) _bcTitle = (supplier + ' — ' + (_bcTitle || filename||'').replace(/\.pdf$/i,'')).slice(0,80);
   else if (!_bcTitle && filename) _bcTitle = filename.replace(/\.pdf$/i,'');
+  if (supplier) _bcSupplier = supplier;
+  if (isCencora) _bcSupplier = 'ALLIANCE HEALTHCARE';
   const knownFormat = getBcFormat(supplier);
 
   // Détecter colonnes Quantité et PFHT
