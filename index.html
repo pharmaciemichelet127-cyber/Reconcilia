@@ -720,6 +720,17 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 <body>
+<!-- ÉTAPE A — Écran de connexion par mot de passe partagé (retiré par authInit si session valide) -->
+<div id="auth-overlay" style="position:fixed;inset:0;z-index:99999;background:#0f172a;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif">
+  <div style="background:#fff;border-radius:16px;padding:32px 28px;width:min(360px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center">
+    <div style="font-size:40px">💊</div>
+    <h2 style="margin:8px 0 4px;font-size:20px;color:#0f172a">ReconcilIA</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#64748b">Pharmacie MICHELET — accès protégé</p>
+    <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:15px;margin-bottom:12px" onkeydown="if(event.key==='Enter')authLogin()">
+    <button id="auth-btn" onclick="authLogin()" style="width:100%;padding:12px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Se connecter</button>
+    <div id="auth-error" style="color:#dc2626;font-size:13px;margin-top:10px;min-height:18px"></div>
+  </div>
+</div>
 <nav>
   <div class="logo" style="gap:10px">
     ReconcilIA
@@ -3645,7 +3656,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260708z82';
+const APP_VERSION = '2.0.20260711z83';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -16494,6 +16505,61 @@ async function calcAndFillObjectifs() {
 
 
 }
+
+/* ============================================================
+   ÉTAPE A — Authentification par mot de passe partagé
+   Jeton "expiration.signatureHMAC" délivré par /api/login,
+   stocké 30 jours dans localStorage. Aucune autre fonction
+   de l'application n'est modifiée.
+   ============================================================ */
+const AUTH_SESSION_KEY = 'reconcilia-session';
+function authGetSession(){ try{ return localStorage.getItem(AUTH_SESSION_KEY) || ''; }catch(e){ return ''; } }
+function authSessionValide(){
+  const s = authGetSession();
+  const i = s.indexOf('.');
+  if (i < 1) return false;
+  const exp = parseInt(s.slice(0, i), 10);
+  return Number.isFinite(exp) && Date.now() < exp;
+}
+async function authLogin(){
+  const input = document.getElementById('auth-password');
+  const btn = document.getElementById('auth-btn');
+  const err = document.getElementById('auth-error');
+  const pwd = (input && input.value) || '';
+  if (!pwd) { if (err) err.textContent = 'Saisissez le mot de passe.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Vérification…'; }
+  if (err) err.textContent = '';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok || !d.session) throw new Error(d.error || ('Erreur ' + r.status));
+    localStorage.setItem(AUTH_SESSION_KEY, d.session);
+    const ov = document.getElementById('auth-overlay');
+    if (ov) ov.remove();
+  } catch(e) {
+    if (err) err.textContent = (e.message === 'Failed to fetch') ? 'Serveur injoignable — réessayez.' : e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Se connecter'; }
+  }
+}
+function authDeconnexion(){
+  try{ localStorage.removeItem(AUTH_SESSION_KEY); }catch(e){}
+  location.reload();
+}
+function authInit(){
+  if (authSessionValide()) {
+    const ov = document.getElementById('auth-overlay');
+    if (ov) ov.remove();
+  } else {
+    try{ localStorage.removeItem(AUTH_SESSION_KEY); }catch(e){}
+    setTimeout(()=>{ const i = document.getElementById('auth-password'); if (i) i.focus(); }, 50);
+  }
+}
+authInit();
 </script>
 </body>
 </html>
