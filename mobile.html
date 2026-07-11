@@ -10,39 +10,8 @@
 <title>ReconcilIA Mobile v2.3</title>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
-function loadMsal(callback) {
-  if (window.msal) { callback(); return; }
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js',
-    'https://unpkg.com/@azure/msal-browser@3.27.0/lib/msal-browser.min.js',
-    'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js'
-  ];
-  let idx = 0;
-  function tryNext() {
-    if (idx >= urls.length) return;
-    const s = document.createElement('script');
-    s.src = urls[idx++]; s.onload = callback; s.onerror = tryNext;
-    document.head.appendChild(s);
-  }
-  tryNext();
-}
-loadMsal(async () => {
-  await new Promise(r => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', r) : r());
-  try {
-    const app = new window.msal.PublicClientApplication(MSAL_CONFIG);
-    await app.initialize();
-    _msalApp = app;
-    const result = await app.handleRedirectPromise();
-    if (result?.account) {
-      currentUser = result.account;
-      await onConnected();
-    } else {
-      const accounts = app.getAllAccounts();
-      if (accounts.length) { currentUser = accounts[0]; await onConnected(); }
-      else updateAuthUI(false);
-    }
-  } catch(e) { console.warn('MSAL:', e); updateAuthUI(false); }
-});
+/* ÉTAPE C — MSAL retiré. La connexion OneDrive passe par le proxy serveur
+   /api/onedrive. L'auto-connexion est gérée par odAutoConnect() en fin de script. */
 </script>
 <style>
 :root {
@@ -557,21 +526,24 @@ let _labosKnown = [];
 // AUTH
 // ══════════════════════════════════════════════
 async function signIn() {
-  if (!_msalApp) return toast('MSAL non chargé', 'error');
   try {
-    await _msalApp.loginRedirect({ scopes: ['Files.ReadWrite', 'User.Read'] });
+    const r = await fetch(GRAPH + '/me/drive/root'); // passe par l'intercepteur proxy
+    if (r.status === 428) {
+      location.href = '/api/onedrive-auth?session=' + encodeURIComponent(authGetSession());
+      return;
+    }
+    if (r.status === 401) return toast('Session expirée — rechargez et ressaisissez le mot de passe', 'error');
+    if (!r.ok) return toast('OneDrive : erreur serveur ' + r.status, 'error');
+    currentUser = { name: 'Pharmacie MICHELET', username: 'OneDrive pharmacie' };
+    _token = 'proxy';
+    await onConnected();
   } catch(e) { toast('Erreur connexion : ' + e.message, 'error'); }
 }
 
 async function getToken() {
-  if (!_msalApp || !currentUser) throw new Error('Non connecté');
-  try {
-    const r = await _msalApp.acquireTokenSilent({ scopes: ['Files.ReadWrite'], account: currentUser });
-    _token = r.accessToken; return _token;
-  } catch {
-    await _msalApp.acquireTokenRedirect({ scopes: ['Files.ReadWrite'], account: currentUser });
-    return null;
-  }
+  // ÉTAPE C — le vrai token vit côté serveur ; sentinelle pour les gardes historiques
+  _token = 'proxy';
+  return 'proxy';
 }
 
 function updateAuthUI(connected) {
@@ -1645,6 +1617,84 @@ function authInit(){
   }
 }
 authInit();
+
+/* ============================================================
+   ÉTAPE C — Intercepteur fetch Graph → proxy /api/onedrive
+   (identique à index.html, adapté au module mobile)
+   ============================================================ */
+const _fetchOriginal = window.fetch.bind(window);
+
+async function _odUploadLarge(path, blob, headers){
+  const sessPath = path.replace(/:\/content(\?.*)?$/, ':/createUploadSession');
+  const h = new Headers(headers); h.set('Content-Type','application/json');
+  const cr = await _fetchOriginal('/api/onedrive?path=' + encodeURIComponent(sessPath), {
+    method:'POST', headers:h,
+    body: JSON.stringify({ item: { '@microsoft.graph.conflictBehavior': 'replace' } })
+  });
+  if (!cr.ok) return cr;
+  const cj = await cr.json().catch(()=>({}));
+  if (!cj.uploadUrl) return new Response(JSON.stringify({error:'createUploadSession sans uploadUrl'}),{status:502});
+  const CHUNK = 13107200; // 12,5 Mio = 40 × 320 Kio
+  let pos = 0, last = null;
+  while (pos < blob.size) {
+    const end = Math.min(pos + CHUNK, blob.size);
+    last = await _fetchOriginal(cj.uploadUrl, {
+      method:'PUT',
+      headers: { 'Content-Range': `bytes ${pos}-${end-1}/${blob.size}` },
+      body: blob.slice(pos, end)
+    });
+    if (!last.ok && last.status !== 202) return last;
+    pos = end;
+  }
+  return last;
+}
+
+window.fetch = async function(input, init){
+  let url = (typeof input === 'string') ? input : ((input && input.url) || '');
+  if (!url.startsWith(GRAPH)) return _fetchOriginal(input, init);
+
+  init = init || {};
+  const method = (init.method || (typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+  const path = url.slice(GRAPH.length);
+  const headers = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined) || {});
+  headers.delete('Authorization');
+  headers.set('X-Session', authGetSession());
+
+  let body = init.body;
+  if (method === 'PUT' && /:\/content/.test(path) && body) {
+    if (typeof body === 'string' && body.length > 3.5*1024*1024) body = new Blob([body]);
+    const size = body.size || 0;
+    if (size > 3.5*1024*1024) return _odUploadLarge(path, body, headers);
+  }
+
+  const r = await _fetchOriginal('/api/onedrive?path=' + encodeURIComponent(path), { method, headers, body });
+  if (r.status === 401) toast('Session expirée — rechargez et ressaisissez le mot de passe', 'error');
+  const redir = r.headers.get('X-Proxy-Redirect');
+  if (redir) return _fetchOriginal(redir);
+  return r;
+};
+
+/* ---- Auto-connexion au chargement (remplace handleRedirectPromise MSAL) ---- */
+async function odAutoConnect(){
+  if (!authSessionValide()) return;
+  try {
+    const r = await fetch(GRAPH + '/me/drive/root');
+    if (!r.ok) { updateAuthUI(false); return; } // 428 = OneDrive pas connecté → badge cliquable
+    currentUser = { name: 'Pharmacie MICHELET', username: 'OneDrive pharmacie' };
+    _token = 'proxy';
+    await onConnected();
+  } catch(e) { console.warn('Auto-connexion OneDrive:', e.message); updateAuthUI(false); }
+}
+(function(){
+  try {
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('msal.') || k.indexOf('login.windows.net') !== -1 || k.indexOf('login.microsoftonline.com') !== -1) localStorage.removeItem(k);
+    });
+  } catch(e){}
+  const go = () => { odAutoConnect(); };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') go();
+  else document.addEventListener('DOMContentLoaded', go);
+})();
 </script>
 </body>
 </html>
