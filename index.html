@@ -3604,7 +3604,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260712z84';
+const APP_VERSION = '2.0.20260712z85';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -16492,6 +16492,16 @@ async function _odUploadLarge(path, blob, headers){
 
 window.fetch = async function(input, init){
   let url = (typeof input === 'string') ? input : ((input && input.url) || '');
+
+  // v z85 — le proxy Anthropic exige la session : X-Session injecté ici,
+  // aucun des 13 points d'appel /api/claude n'est modifié
+  if (url.startsWith('/api/claude')) {
+    init = init || {};
+    const h = new Headers(init.headers || {});
+    h.set('X-Session', authGetSession());
+    return _fetchOriginal(input, { ...init, headers: h });
+  }
+
   if (!url.startsWith(GRAPH_BASE)) return _fetchOriginal(input, init);
 
   init = init || {};
