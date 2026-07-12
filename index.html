@@ -713,6 +713,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
     <button class="nav-tab active" onclick="showPage('receptions-physiques',this)">📦 Réceptions physiques <span class="tab-badge" id="tab-badge-recphys" style="display:none">0</span></button>
     <button class="nav-tab" onclick="showPage('preuves-envoi',this)">📮 Preuves d'envoi <span class="tab-badge" id="tab-badge-preuves" style="display:none">0</span></button>
     <button class="nav-tab" onclick="showPage('litiges',this)">⚠️ Litiges <span class="tab-badge" id="tab-badge-litiges" style="display:none">0</span></button>
+    <button class="nav-tab" onclick="showPage('retours',this)">↩️ Retours <span class="tab-badge" id="tab-badge-retours" style="display:none">0</span></button>
     <button class="nav-tab" onclick="showPage('recherche',this)">🔍 Recherche BL</button>
     <button class="nav-tab" onclick="showPage('recherche-ean',this)">🔎 Recherche EAN</button>
   </div>
@@ -2289,6 +2290,151 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
   <div id="litige-list" style="display:flex;flex-direction:column;gap:10px"></div>
 </div>
 
+<div class="page" id="page-retours">
+  <div class="page-header">
+    <div>
+      <div class="page-title">↩️ Retours</div>
+      <div class="page-sub">Retours grossistes (CERP, Alliance) et fournisseurs directs · Acceptation produit par produit · Avoirs</div>
+    </div>
+    <button class="btn btn-primary" onclick="showRetourModal()">+ Nouveau retour</button>
+  </div>
+
+  <!-- Filtres -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <select id="retour-filter-statut" class="input-field" style="width:210px;font-size:13px" onchange="renderRetours()">
+      <option value="">Tous les statuts</option>
+      <option value="attente">🟠 En attente fournisseur</option>
+      <option value="accepte">🔵 Accepté</option>
+      <option value="partiel">🟣 Accepté partiellement</option>
+      <option value="refuse">🔴 Refusé</option>
+      <option value="avoir">🟡 Avoir reçu</option>
+      <option value="cloture">🟢 Clôturé</option>
+    </select>
+    <select id="retour-filter-fournisseur" class="input-field" style="width:180px;font-size:13px" onchange="renderRetours()">
+      <option value="">Tous fournisseurs</option>
+    </select>
+  </div>
+
+  <!-- KPIs -->
+  <div id="retour-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px"></div>
+
+  <!-- Liste -->
+  <div id="retour-list" style="display:flex;flex-direction:column;gap:10px"></div>
+</div>
+
+<!-- Modal Retour -->
+<div class="overlay" id="retour-overlay" onclick="if(event.target===this)document.getElementById('retour-overlay').classList.remove('open')" style="align-items:center;justify-content:center">
+  <div class="modal" style="max-width:680px;width:95%;max-height:90vh;overflow-y:auto">
+    <div class="modal-title" id="retour-modal-title">↩️ Nouveau retour</div>
+    <input type="hidden" id="retour-edit-id">
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+
+      <!-- Date + Fournisseur -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Date de la demande *</label>
+          <input type="date" id="retour-date" class="input-field" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Fournisseur *</label>
+          <select id="retour-fournisseur" class="input-field" style="width:100%" onchange="document.getElementById('retour-fournisseur-autre').style.display=this.value==='AUTRE'?'block':'none'">
+            <option value="CERP">CERP</option>
+            <option value="ALLIANCE">ALLIANCE</option>
+            <option value="THUASNE">THUASNE</option>
+            <option value="GIBAUD">GIBAUD</option>
+            <option value="PODOWELL">PODOWELL</option>
+            <option value="ANATONIC">ANATONIC</option>
+            <option value="PHARMAT">PHARMAT</option>
+            <option value="AUTRE">Autre…</option>
+          </select>
+          <input type="text" id="retour-fournisseur-autre" class="input-field" style="width:100%;margin-top:6px;display:none" placeholder="Nom du fournisseur">
+        </div>
+      </div>
+
+      <!-- N° BL -->
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">N° BL fournisseur</label>
+        <input type="text" id="retour-num-bl" class="input-field" style="width:100%;font-family:'JetBrains Mono',monospace" placeholder="Ex: 389380">
+      </div>
+
+      <!-- BL PDF -->
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">📄 Bon de livraison (PDF ou photo)</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('retour-bl-file').click()">📎 Déposer le BL</button>
+          <input type="file" id="retour-bl-file" accept="application/pdf,image/*" style="display:none" onchange="onRetourPdfAdded(this,'bl')">
+          <span id="retour-bl-file-info" style="font-size:12px;color:var(--ink2)"></span>
+        </div>
+      </div>
+
+      <!-- Produits -->
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Produits concernés par le retour *</label>
+        <div style="display:grid;grid-template-columns:2fr 130px 60px 150px 26px;gap:6px;font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;margin-bottom:4px">
+          <span>Libellé</span><span>Code EAN (opt.)</span><span style="text-align:center">Qté</span><span>Décision fournisseur</span><span></span>
+        </div>
+        <div id="retour-produits-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addRetourProduit()">＋ Ajouter un produit</button>
+      </div>
+
+      <!-- Réponse fournisseur -->
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="retour-reponse-recue"> 📬 Réponse du fournisseur reçue
+        </label>
+        <div id="retour-reponse-detail" style="display:none;margin-top:8px">
+          <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Date de la réponse</label>
+          <input type="date" id="retour-date-reponse" class="input-field" style="width:200px">
+          <div style="font-size:11px;color:var(--ink2);margin-top:6px">Indiquez la décision (✅ accepté / ❌ refusé) produit par produit dans le tableau ci-dessus.</div>
+        </div>
+      </div>
+
+      <!-- Avoir -->
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="retour-avoir-recu"> 🧾 Avoir reçu
+        </label>
+        <div id="retour-avoir-detail" style="display:none;margin-top:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Date de l'avoir</label>
+              <input type="date" id="retour-date-avoir" class="input-field" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Montant (€)</label>
+              <input type="text" id="retour-montant-avoir" class="input-field" style="width:100%;font-family:'JetBrains Mono',monospace" placeholder="Ex: 45.90">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('retour-avoir-file').click()">📎 Déposer l'avoir</button>
+            <input type="file" id="retour-avoir-file" accept="application/pdf,image/*" style="display:none" onchange="onRetourPdfAdded(this,'avoir')">
+            <span id="retour-avoir-file-info" style="font-size:12px;color:var(--ink2)"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clôture -->
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="retour-cloture"> ✅ Retour clôturé
+        </label>
+      </div>
+
+      <!-- Commentaire -->
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;display:block;margin-bottom:5px">Commentaire</label>
+        <textarea id="retour-comment" class="input-field" style="width:100%;min-height:60px;resize:vertical"></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+        <button class="btn btn-secondary" onclick="document.getElementById('retour-overlay').classList.remove('open')">Annuler</button>
+        <button class="btn btn-primary" id="btn-retour-save" onclick="saveRetour()">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <!-- Modal Litige -->
 <div class="overlay" id="litige-overlay" onclick="if(event.target===this)document.getElementById('litige-overlay').classList.remove('open')" style="align-items:center;justify-content:center">
   <div class="modal" style="max-width:560px;width:95%;max-height:90vh;overflow-y:auto">
@@ -3604,7 +3750,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260712z86';
+const APP_VERSION = '2.0.20260712z87';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -3776,6 +3922,7 @@ let lgpiPendingList=[]; // dernière capture des commandes "non validées financ
 let sansBLList=[];
 let preuveEnvoiList=[];
 let litigesList=[];
+let retoursList=[];
 let recPhysList=[]; // [{numero:'387802', fournisseur:'ALLOGA', montantHT:'1601.01', date:'18/04/2026', imported: '19/04/2026'}]
 let lgpiConfig={
   active: true,
@@ -3835,6 +3982,7 @@ function startAutoRefresh() {
       loadPreuvesFromOneDrive();
       loadSansBLFromOneDrive();
       loadLitigesFromOneDrive();
+      loadRetoursFromOneDrive();
     }
   }, 15 * 60 * 1000);
   console.log('[AutoRefresh] Renouvellement automatique activé (25 min) + bgSync (15 min)');
@@ -4682,6 +4830,7 @@ async function loadFromOneDrive() {
       await loadPreuvesFromOneDrive();
       await loadSansBLFromOneDrive();
       await loadLitigesFromOneDrive();
+      await loadRetoursFromOneDrive();
     } catch(e){}
   } catch(e){
     if(e.errorCode==='interaction_in_progress'||e.message?.includes('interaction_in_progress')){
@@ -4694,8 +4843,8 @@ async function loadFromOneDrive() {
   }
 }
 
-function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));}catch(e){}}
-function loadStateLocal(){loadCommandesLocal();try{const rej=localStorage.getItem('reconcilia-rejected');if(rej)JSON.parse(rej).forEach(id=>rejectedIds.add(id));}catch(e){}try{const s=localStorage.getItem('reconcilia-store');if(s){const p=JSON.parse(s);store.bl=(p.bl||[]).map(d=>({...d,base64:null}));store.fac=(p.fac||[]).map(d=>({...d,base64:null}));}const h=localStorage.getItem('reconcilia-history');if(h)history=JSON.parse(h);const a=localStorage.getItem('reconcilia-aliases');if(a)aliases=JSON.parse(a);const c=localStorage.getItem('reconcilia-classifier');if(c){const cm=JSON.parse(c);if(cm&&cm.rules)classifierMemory=cm;}const ln=localStorage.getItem('reconcilia-labonorms');if(ln){const lnp=JSON.parse(ln);if(Array.isArray(lnp))laboNorms=lnp;}const lg=localStorage.getItem('reconcilia-lgpi');if(lg){const lgp=JSON.parse(lg);if(Array.isArray(lgp))lgpiReceptions=lgp;}const lgpend=localStorage.getItem('reconcilia-lgpi-pending');if(lgpend){const lgpp=JSON.parse(lgpend);if(Array.isArray(lgpp))lgpiPendingList=lgpp;}const sbl=localStorage.getItem('reconcilia-sans-bl');if(sbl){const sblp=JSON.parse(sbl);if(Array.isArray(sblp))sansBLList=sblp;}const rcp=localStorage.getItem('reconcilia-recphys');if(rcp){try{const rcpp=JSON.parse(rcp);if(Array.isArray(rcpp))recPhysList=rcpp;}catch(e){}}const penv=localStorage.getItem('reconcilia-preuves-envoi');if(penv){try{const pp=JSON.parse(penv);if(Array.isArray(pp))preuveEnvoiList=pp;}catch(e){}}const lit=localStorage.getItem('reconcilia-litiges');if(lit){try{const litp=JSON.parse(lit);if(Array.isArray(litp))litigesList=litp;}catch(e){}}const lgc=localStorage.getItem('reconcilia-lgpi-config');if(lgc){const lgcp=JSON.parse(lgc);if(lgcp&&typeof lgcp==='object')lgpiConfig={...lgpiConfig,...lgcp,high:{...lgpiConfig.high,...lgcp.high},medium:{...lgpiConfig.medium,...lgcp.medium}};}}catch(e){}}
+function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));localStorage.setItem('reconcilia-retours',JSON.stringify(retoursList));}catch(e){}}
+function loadStateLocal(){loadCommandesLocal();try{const rej=localStorage.getItem('reconcilia-rejected');if(rej)JSON.parse(rej).forEach(id=>rejectedIds.add(id));}catch(e){}try{const s=localStorage.getItem('reconcilia-store');if(s){const p=JSON.parse(s);store.bl=(p.bl||[]).map(d=>({...d,base64:null}));store.fac=(p.fac||[]).map(d=>({...d,base64:null}));}const h=localStorage.getItem('reconcilia-history');if(h)history=JSON.parse(h);const a=localStorage.getItem('reconcilia-aliases');if(a)aliases=JSON.parse(a);const c=localStorage.getItem('reconcilia-classifier');if(c){const cm=JSON.parse(c);if(cm&&cm.rules)classifierMemory=cm;}const ln=localStorage.getItem('reconcilia-labonorms');if(ln){const lnp=JSON.parse(ln);if(Array.isArray(lnp))laboNorms=lnp;}const lg=localStorage.getItem('reconcilia-lgpi');if(lg){const lgp=JSON.parse(lg);if(Array.isArray(lgp))lgpiReceptions=lgp;}const lgpend=localStorage.getItem('reconcilia-lgpi-pending');if(lgpend){const lgpp=JSON.parse(lgpend);if(Array.isArray(lgpp))lgpiPendingList=lgpp;}const sbl=localStorage.getItem('reconcilia-sans-bl');if(sbl){const sblp=JSON.parse(sbl);if(Array.isArray(sblp))sansBLList=sblp;}const rcp=localStorage.getItem('reconcilia-recphys');if(rcp){try{const rcpp=JSON.parse(rcp);if(Array.isArray(rcpp))recPhysList=rcpp;}catch(e){}}const penv=localStorage.getItem('reconcilia-preuves-envoi');if(penv){try{const pp=JSON.parse(penv);if(Array.isArray(pp))preuveEnvoiList=pp;}catch(e){}}const lit=localStorage.getItem('reconcilia-litiges');if(lit){try{const litp=JSON.parse(lit);if(Array.isArray(litp))litigesList=litp;}catch(e){}}const ret=localStorage.getItem('reconcilia-retours');if(ret){try{const retp=JSON.parse(ret);if(Array.isArray(retp))retoursList=retp;}catch(e){}}const lgc=localStorage.getItem('reconcilia-lgpi-config');if(lgc){const lgcp=JSON.parse(lgc);if(lgcp&&typeof lgcp==='object')lgpiConfig={...lgpiConfig,...lgcp,high:{...lgpiConfig.high,...lgcp.high},medium:{...lgpiConfig.medium,...lgcp.medium}};}}catch(e){}}
 // Migration : recalculer incomplet pour les réceptions existantes
 if (recPhysList && recPhysList.length) {
   let changed = false;
@@ -6180,6 +6329,7 @@ const NAV_TABS_DEFAULT = [
   {id:'receptions-physiques',label:'📦 Réceptions physiques',visible:true},
   {id:'preuves-envoi',label:'📮 Preuves d\'envoi',visible:true},
   {id:'litiges',label:'⚠️ Litiges',visible:true},
+  {id:'retours',label:'↩️ Retours',visible:true},
   {id:'commandes',label:'🛒 Commandes',visible:true},
   {id:'echeances',label:'💰 Échéances',visible:true},
   {id:'fiches-labo',label:'🏷 Fiches labo',visible:true},
@@ -7678,6 +7828,363 @@ async function loadLitigesFromOneDrive() {
     }
   } catch(e) {}
 }
+
+// ════════════════════════════════════════════════════
+// RETOURS FOURNISSEURS
+// ════════════════════════════════════════════════════
+const OD_RETOURS_PATH = '/me/drive/root:/ReconcilIA/reconcilia-retours.json:/content';
+
+const RETOUR_FOURNISSEURS = ['CERP','ALLIANCE','THUASNE','GIBAUD','PODOWELL','ANATONIC','PHARMAT'];
+
+const RETOUR_STATUTS = {
+  attente: { label:'En attente fournisseur', color:'var(--warn)',   bg:'rgba(245,158,11,0.1)', emoji:'🟠' },
+  accepte: { label:'Accepté',                color:'#2563b0',       bg:'rgba(37,99,176,0.1)',  emoji:'🔵' },
+  partiel: { label:'Accepté partiellement',  color:'#7c3aed',       bg:'rgba(124,58,237,0.1)', emoji:'🟣' },
+  refuse:  { label:'Refusé',                 color:'var(--danger)', bg:'rgba(220,38,38,0.1)',  emoji:'🔴' },
+  avoir:   { label:'Avoir reçu',             color:'#b45309',       bg:'rgba(180,83,9,0.1)',   emoji:'🟡' },
+  cloture: { label:'Clôturé',                color:'var(--green)',  bg:'rgba(22,163,74,0.1)',  emoji:'🟢' }
+};
+
+let _retProduits = [];
+let _retBlPdf = null;    // {base64,name} nouveau fichier OU {odId,webUrl,name} déjà uploadé
+let _retAvoirPdf = null;
+
+function retEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function addRetourProduit(){ _retProduits.push({libelle:'',code:'',qte:1,decision:''}); renderRetourProduits(); }
+
+function renderRetourProduits(){
+  const list = document.getElementById('retour-produits-list');
+  if (!list) return;
+  if (!_retProduits.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--ink3);font-style:italic">Aucun produit — cliquez sur « ＋ Ajouter un produit »</div>';
+    return;
+  }
+  list.innerHTML = _retProduits.map((p,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 130px 60px 150px 26px;gap:6px;align-items:center">
+      <input type="text" class="input-field" placeholder="Libellé produit" value="${retEsc(p.libelle)}" oninput="_retProduits[${i}].libelle=this.value">
+      <input type="text" class="input-field" style="font-family:'JetBrains Mono',monospace" placeholder="EAN-13" value="${retEsc(p.code)}" oninput="_retProduits[${i}].code=this.value">
+      <input type="number" class="input-field" min="1" value="${p.qte||1}" style="text-align:center" oninput="_retProduits[${i}].qte=parseInt(this.value)||1">
+      <select class="input-field" onchange="_retProduits[${i}].decision=this.value">
+        <option value=""${!p.decision?' selected':''}>⏳ En attente</option>
+        <option value="accepte"${p.decision==='accepte'?' selected':''}>✅ Accepté</option>
+        <option value="refuse"${p.decision==='refuse'?' selected':''}>❌ Refusé</option>
+      </select>
+      <button onclick="_retProduits.splice(${i},1);renderRetourProduits()" style="border:none;background:none;cursor:pointer;color:var(--danger);font-size:14px" title="Retirer">✕</button>
+    </div>`).join('');
+}
+
+function onRetourPdfAdded(input, kind){
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  if (f.size > 20*1024*1024) { toast('Fichier trop volumineux (20 Mo max)','warn'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const obj = {base64: e.target.result, name: f.name};
+    if (kind === 'avoir') _retAvoirPdf = obj; else _retBlPdf = obj;
+    renderRetourFileInfo(kind);
+  };
+  reader.readAsDataURL(f);
+}
+
+function renderRetourFileInfo(kind){
+  const el = document.getElementById(kind==='avoir' ? 'retour-avoir-file-info' : 'retour-bl-file-info');
+  if (!el) return;
+  const f = kind==='avoir' ? _retAvoirPdf : _retBlPdf;
+  if (!f) { el.innerHTML = '<span style="color:var(--ink3);font-style:italic">Aucun fichier</span>'; return; }
+  el.innerHTML = `📄 ${retEsc(f.name||'document')}${f.odId ? ' <span style="color:var(--green);font-weight:600">✓ OneDrive</span>' : ''} <button onclick="${kind==='avoir'?'_retAvoirPdf':'_retBlPdf'}=null;renderRetourFileInfo('${kind}')" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px" title="Retirer">✕</button>`;
+}
+
+function showRetourModal(id){
+  const isEdit = !!id;
+  document.getElementById('retour-modal-title').textContent = isEdit ? '✏️ Modifier retour' : '↩️ Nouveau retour';
+  document.getElementById('retour-edit-id').value = id || '';
+  const r = id ? retoursList.find(x=>x.id===id) : null;
+
+  document.getElementById('retour-date').value = r?.date || new Date().toISOString().slice(0,10);
+
+  const selF = document.getElementById('retour-fournisseur');
+  const autreInput = document.getElementById('retour-fournisseur-autre');
+  const four = r?.fournisseur || 'CERP';
+  if (RETOUR_FOURNISSEURS.includes(four)) { selF.value = four; autreInput.style.display = 'none'; autreInput.value = ''; }
+  else if (r) { selF.value = 'AUTRE'; autreInput.style.display = 'block'; autreInput.value = four; }
+  else { selF.value = 'CERP'; autreInput.style.display = 'none'; autreInput.value = ''; }
+
+  document.getElementById('retour-num-bl').value = r?.numBL || '';
+
+  _retProduits = (r?.produits||[]).map(p=>({...p}));
+  if (!_retProduits.length && !isEdit) _retProduits = [{libelle:'',code:'',qte:1,decision:''}];
+  renderRetourProduits();
+
+  _retBlPdf = r?.blPdf ? {...r.blPdf} : null;
+  _retAvoirPdf = r?.avoirPdf ? {...r.avoirPdf} : null;
+  renderRetourFileInfo('bl'); renderRetourFileInfo('avoir');
+
+  const repChk = document.getElementById('retour-reponse-recue');
+  repChk.checked = r?.reponseRecue || false;
+  document.getElementById('retour-reponse-detail').style.display = repChk.checked ? 'block' : 'none';
+  document.getElementById('retour-date-reponse').value = r?.dateReponse || '';
+  repChk.onchange = () => {
+    document.getElementById('retour-reponse-detail').style.display = repChk.checked ? 'block' : 'none';
+    if (repChk.checked && !document.getElementById('retour-date-reponse').value)
+      document.getElementById('retour-date-reponse').value = new Date().toISOString().slice(0,10);
+  };
+
+  const avChk = document.getElementById('retour-avoir-recu');
+  avChk.checked = r?.avoirRecu || false;
+  document.getElementById('retour-avoir-detail').style.display = avChk.checked ? 'block' : 'none';
+  document.getElementById('retour-date-avoir').value = r?.dateAvoir || '';
+  document.getElementById('retour-montant-avoir').value = r?.montantAvoir || '';
+  avChk.onchange = () => {
+    document.getElementById('retour-avoir-detail').style.display = avChk.checked ? 'block' : 'none';
+    if (avChk.checked && !document.getElementById('retour-date-avoir').value)
+      document.getElementById('retour-date-avoir').value = new Date().toISOString().slice(0,10);
+  };
+
+  document.getElementById('retour-cloture').checked = r?.cloture || false;
+  document.getElementById('retour-comment').value = r?.comment || '';
+
+  document.getElementById('retour-overlay').classList.add('open');
+}
+
+function computeRetourStatut(produits, reponseRecue, avoirRecu, cloture){
+  if (cloture) return 'cloture';
+  if (avoirRecu) return 'avoir';
+  const acc = produits.filter(p=>p.decision==='accepte').length;
+  const ref = produits.filter(p=>p.decision==='refuse').length;
+  if (reponseRecue || acc || ref) {
+    if (acc && !ref && acc === produits.length) return 'accepte';
+    if (ref && !acc && ref === produits.length) return 'refuse';
+    if (acc || ref) return 'partiel';
+  }
+  return 'attente';
+}
+
+async function uploadRetourFile(f, id, kind){
+  if (!_odToken || !f || !f.base64) return null;
+  try {
+    const blob = await (await fetch(f.base64)).blob();
+    let ext = ((f.name||'').split('.').pop()||'').toLowerCase();
+    if (!/^(pdf|jpg|jpeg|png)$/.test(ext)) ext = (blob.type||'').includes('pdf') ? 'pdf' : 'jpg';
+    const fname = `retour_${id}_${kind}.${ext}`;
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/ReconcilIA/Retours/${fname}:/content`, {
+      method:'PUT', headers:{'Authorization':'Bearer '+_odToken,'Content-Type':blob.type||'application/pdf'}, body: blob
+    });
+    if (res.ok) { const od = await res.json(); return {odId: od.id||null, webUrl: od.webUrl||null, name: fname}; }
+  } catch(e) { console.warn('Upload retour', kind, e); }
+  return null;
+}
+
+async function saveRetour(){
+  const dateVal = document.getElementById('retour-date').value;
+  let fournisseur = document.getElementById('retour-fournisseur').value;
+  if (fournisseur === 'AUTRE') fournisseur = document.getElementById('retour-fournisseur-autre').value.trim();
+  const produits = _retProduits
+    .map(p=>({libelle:(p.libelle||'').trim(), code:(p.code||'').trim(), qte:p.qte||1, decision:p.decision||''}))
+    .filter(p=>p.libelle||p.code);
+  if (!dateVal || !fournisseur) { toast('⚠ Date et fournisseur obligatoires','warn'); return; }
+  if (!produits.length) { toast('⚠ Indiquer au moins un produit','warn'); return; }
+
+  const btn = document.getElementById('btn-retour-save');
+  btn.disabled = true; btn.textContent = '⏳...';
+
+  const reponseRecue = document.getElementById('retour-reponse-recue').checked;
+  const avoirRecu = document.getElementById('retour-avoir-recu').checked;
+  const cloture = document.getElementById('retour-cloture').checked;
+
+  const editId = document.getElementById('retour-edit-id').value;
+  const existing = editId ? retoursList.find(r=>r.id===editId) : null;
+  const id = editId || 'ret-' + Date.now();
+
+  // Upload des fichiers si nouveaux (base64 sans odId) — conservés localement si l'upload échoue
+  let blPdf = _retBlPdf, avoirPdf = _retAvoirPdf;
+  if (blPdf && blPdf.base64 && !blPdf.odId) {
+    const up = await uploadRetourFile(blPdf, id, 'bl');
+    if (up) blPdf = up; else toast('⚠ BL non uploadé sur OneDrive (conservé localement)','warn');
+  }
+  if (avoirPdf && avoirPdf.base64 && !avoirPdf.odId) {
+    const up = await uploadRetourFile(avoirPdf, id, 'avoir');
+    if (up) avoirPdf = up; else toast('⚠ Avoir non uploadé sur OneDrive (conservé localement)','warn');
+  }
+
+  const statut = computeRetourStatut(produits, reponseRecue, avoirRecu, cloture);
+
+  const entry = {
+    id, date: dateVal, fournisseur,
+    numBL: document.getElementById('retour-num-bl').value.trim(),
+    produits,
+    blPdf: blPdf ? {odId: blPdf.odId||null, webUrl: blPdf.webUrl||null, name: blPdf.name||'', base64: blPdf.odId ? null : (blPdf.base64||null)} : null,
+    reponseRecue,
+    dateReponse: reponseRecue ? document.getElementById('retour-date-reponse').value : '',
+    avoirRecu,
+    dateAvoir: avoirRecu ? document.getElementById('retour-date-avoir').value : '',
+    montantAvoir: avoirRecu ? document.getElementById('retour-montant-avoir').value.trim() : '',
+    avoirPdf: avoirPdf ? {odId: avoirPdf.odId||null, webUrl: avoirPdf.webUrl||null, name: avoirPdf.name||'', base64: avoirPdf.odId ? null : (avoirPdf.base64||null)} : null,
+    cloture,
+    dateCloture: cloture ? (existing?.dateCloture || new Date().toISOString().slice(0,10)) : '',
+    comment: document.getElementById('retour-comment').value.trim(),
+    statut,
+    createdAt: existing?.createdAt || new Date().toLocaleDateString('fr-FR'),
+    updatedAt: new Date().toLocaleDateString('fr-FR')
+  };
+
+  if (editId) {
+    const idx = retoursList.findIndex(r=>r.id===editId);
+    if (idx >= 0) retoursList[idx] = entry; else retoursList.unshift(entry);
+    logActivity(`✏️ Retour modifié : ${fournisseur} · ${dateVal}`, 'ok');
+  } else {
+    retoursList.unshift(entry);
+    toast('↩️ Retour enregistré', 'success');
+    logActivity(`↩️ Retour créé : ${fournisseur} · ${produits.length} produit(s)`, 'warn');
+  }
+
+  saveStateLocal();
+  saveRetoursToOneDrive();
+  document.getElementById('retour-overlay').classList.remove('open');
+  renderRetours();
+  updateAllBadges();
+  btn.disabled = false; btn.textContent = '💾 Enregistrer';
+}
+
+function viewRetourDoc(id, kind){
+  const r = retoursList.find(x=>x.id===id); if (!r) return;
+  const f = kind==='avoir' ? r.avoirPdf : r.blPdf;
+  if (!f) { toast('Aucun document','warn'); return; }
+  if (f.base64) {
+    const win = window.open('','_blank','width=900,height=1000,resizable=yes');
+    if (win) {
+      const isPDF = f.base64.startsWith('data:application/pdf');
+      win.document.write(`<!DOCTYPE html><html><head><title>${retEsc(f.name||'Document')}</title></head><body style="margin:0;background:#f0ede6">${isPDF ? `<embed src="${f.base64}" type="application/pdf" width="100%" style="height:100vh">` : `<img src="${f.base64}" style="max-width:100%">`}</body></html>`);
+      win.document.close();
+    }
+    return;
+  }
+  if (f.webUrl) { window.open(f.webUrl, '_blank'); return; }
+  if (f.odId) { viewDocFromHistory(f.odId, 'bl'); return; }
+  toast('Document non disponible','warn');
+}
+
+function deleteRetour(id){
+  const r = retoursList.find(x=>x.id===id);
+  if (!r || !confirm(`Supprimer le retour ${r.fournisseur} du ${r.date} ?`)) return;
+  retoursList = retoursList.filter(x=>x.id!==id);
+  saveStateLocal();
+  saveRetoursToOneDrive();
+  renderRetours();
+  updateAllBadges();
+  toast('🗑 Retour supprimé', 'info');
+}
+
+function renderRetours(){
+  const list = document.getElementById('retour-list');
+  const kpis = document.getElementById('retour-kpis');
+  if (!list) return;
+
+  // Badge nav
+  const openCount = retoursList.filter(r => r.statut !== 'cloture').length;
+  const badge = document.getElementById('tab-badge-retours');
+  if (badge) { badge.textContent = openCount; badge.style.display = openCount ? '' : 'none'; }
+
+  // Filtre fournisseur dynamique (liste fixe + fournisseurs rencontrés)
+  const selF = document.getElementById('retour-filter-fournisseur');
+  if (selF) {
+    const cur = selF.value;
+    const all = [...new Set([...RETOUR_FOURNISSEURS, ...retoursList.map(r=>r.fournisseur).filter(Boolean)])];
+    selF.innerHTML = '<option value="">Tous fournisseurs</option>' + all.map(f=>`<option value="${retEsc(f)}"${f===cur?' selected':''}>${retEsc(f)}</option>`).join('');
+  }
+
+  // KPIs
+  const attente = retoursList.filter(r=>r.statut==='attente').length;
+  const acceptes = retoursList.filter(r=>r.statut==='accepte'||r.statut==='partiel').length;
+  const avoirs = retoursList.filter(r=>r.avoirRecu).length;
+  const montantAvoirs = retoursList.filter(r=>r.avoirRecu).reduce((s,r)=>s+(parseFloat(r.montantAvoir)||0),0);
+  if (kpis) kpis.innerHTML = [
+    {n: openCount, label:'Retours en cours',  color:'var(--ink)',  emoji:'↩️'},
+    {n: attente,   label:'En attente',        color:'var(--warn)', emoji:'🟠'},
+    {n: acceptes,  label:'Acceptés',          color:'#2563b0',     emoji:'🔵'},
+    {n: montantAvoirs.toFixed(2)+'€', label: avoirs+' avoir'+(avoirs>1?'s':'')+' reçu'+(avoirs>1?'s':''), color:'var(--green)', emoji:'🧾'}
+  ].map(k=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+    <div style="font-size:22px;font-weight:800;color:${k.color};font-family:'JetBrains Mono',monospace">${k.n}</div>
+    <div style="font-size:11px;color:var(--ink2);margin-top:4px">${k.emoji} ${k.label}</div>
+  </div>`).join('');
+
+  // Filtres
+  const fStatut = document.getElementById('retour-filter-statut')?.value || '';
+  const fFour   = document.getElementById('retour-filter-fournisseur')?.value || '';
+  let filtered = retoursList.filter(r => {
+    if (fStatut && r.statut !== fStatut) return false;
+    if (fFour   && r.fournisseur !== fFour) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<div class="storage-empty">Aucun retour' + (fStatut||fFour ? ' pour ces filtres' : '') + '</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(r => {
+    const s = RETOUR_STATUTS[r.statut] || RETOUR_STATUTS.attente;
+    const prods = r.produits || [];
+    const acc = prods.filter(p=>p.decision==='accepte').length;
+    const ref = prods.filter(p=>p.decision==='refuse').length;
+    const prodLines = prods.slice(0,4).map(p => {
+      const ic = p.decision==='accepte' ? '✅' : p.decision==='refuse' ? '❌' : '⏳';
+      return `<div style="font-size:12px;color:var(--ink2)">${ic} ${retEsc(p.libelle||p.code)}${p.qte>1 ? ' <strong>×'+p.qte+'</strong>' : ''}${(p.code&&p.libelle) ? ` <span style="font-family:'JetBrains Mono',monospace;color:var(--ink3);font-size:10px">${retEsc(p.code)}</span>` : ''}</div>`;
+    }).join('') + (prods.length > 4 ? `<div style="font-size:11px;color:var(--ink3)">+ ${prods.length-4} autre(s) produit(s)</div>` : '');
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${s.color};border-radius:12px;padding:14px 16px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:14px;font-weight:700;color:var(--ink)">${retEsc(r.fournisseur)}</span>
+            <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600">${s.emoji} ${s.label}</span>
+            <span style="font-size:11px;color:var(--ink3)">${r.date}</span>
+            ${r.numBL ? `<span style="font-size:11px;font-family:'JetBrains Mono',monospace;background:var(--surface2);padding:2px 8px;border-radius:10px;color:var(--ink2)">N° BL : ${retEsc(r.numBL)}</span>` : ''}
+            <span style="font-size:11px;color:var(--ink3)">${prods.length} produit${prods.length>1?'s':''}${(acc||ref) ? ' · ✅ '+acc+' · ❌ '+ref : ''}</span>
+          </div>
+          ${prodLines}
+          ${r.reponseRecue ? `<div style="font-size:11px;color:var(--warn);margin-top:4px">📬 Réponse fournisseur le ${r.dateReponse||'—'}</div>` : ''}
+          ${r.avoirRecu ? `<div style="font-size:11px;color:var(--green);margin-top:3px">🧾 Avoir reçu le ${r.dateAvoir||'—'}${r.montantAvoir ? ' · '+parseFloat(r.montantAvoir).toFixed(2)+' €' : ''}${r.avoirPdf ? ' · document déposé' : ''}</div>` : ''}
+          ${r.cloture ? `<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:3px">✅ Clôturé le ${r.dateCloture||'—'}</div>` : ''}
+          ${r.comment ? `<div style="font-size:11px;color:var(--ink2);font-style:italic;margin-top:3px">${retEsc(r.comment)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          ${r.blPdf ? `<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="viewRetourDoc('${r.id}','bl')">👁 BL</button>` : ''}
+          ${r.avoirPdf ? `<button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="viewRetourDoc('${r.id}','avoir')">👁 Avoir</button>` : ''}
+          <button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="showRetourModal('${r.id}')">✏️ Modifier</button>
+          <button class="btn btn-secondary btn-sm" style="font-size:11px;color:var(--danger)" onclick="deleteRetour('${r.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveRetoursToOneDrive() {
+  if (!_odToken) return;
+  try {
+    await fetch('https://graph.microsoft.com/v1.0' + OD_RETOURS_PATH, {
+      method:'PUT', headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},
+      body: JSON.stringify(retoursList, null, 2)
+    });
+  } catch(e) { console.warn('Save retours OD:', e); }
+}
+
+async function loadRetoursFromOneDrive() {
+  if (!_odToken) return;
+  try {
+    const r = await fetch('https://graph.microsoft.com/v1.0' + OD_RETOURS_PATH, {headers:{'Authorization':'Bearer '+_odToken}});
+    if (!r.ok) return;
+    const data = await r.json();
+    if (Array.isArray(data)) {
+      const odIds = new Set(data.map(x => x.id));
+      const localOnly = retoursList.filter(x => !odIds.has(x.id));
+      retoursList = [...data, ...localOnly];
+      saveStateLocal();
+      renderRetours();
+    }
+  } catch(e) {}
+}
+
 
 function voirLitigeRecPhys(recPhysId) {
   const litige = litigesList.find(l => l.sourceId === recPhysId);
@@ -9506,7 +10013,7 @@ function showPage(id,btn){
   if(btn)btn.classList.add('active');
   const mBtn=document.getElementById('mnav-'+id);
   if(mBtn)setMobileNav(mBtn);
-  if(id==='litiges'){renderLitiges();} if(id==='bl'){renderDocsBL();} if(id==='fac'){renderDocsFAC();}
+  if(id==='litiges'){renderLitiges();} if(id==='retours'){renderRetours();} if(id==='bl'){renderDocsBL();} if(id==='fac'){renderDocsFAC();}
   if(id==='commandes'){renderCommandesPage();}
   if(id==='suggestions')computeSuggestions();
   if(id==='compare')updatePairSelectors();
@@ -9566,6 +10073,9 @@ function updateAllBadges(){
 
   const nbLit=typeof litigesList!=='undefined'?litigesList.filter(l=>l.statut!=='resolu').length:0;
   _b('tab-badge-litiges', nbLit);
+
+  const nbRet=typeof retoursList!=='undefined'?retoursList.filter(r=>r.statut!=='cloture').length:0;
+  _b('tab-badge-retours', nbRet);
 
   const nbCmd=typeof commandesList!=='undefined'&&typeof isEnRetard!=='undefined'?commandesList.filter(c=>isEnRetard(c)).length:0;
   _b('tab-badge-commandes', nbCmd);
