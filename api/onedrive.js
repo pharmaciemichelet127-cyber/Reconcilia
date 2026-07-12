@@ -61,7 +61,7 @@ async function ghGetSecret() {
   return { buf: Buffer.from(j.content, 'base64'), sha: j.sha };
 }
 async function ghPutSecret(buf, sha) {
-  const body = { message: 'Rotation refresh token OneDrive', content: buf.toString('base64') };
+  const body = { message: 'MAJ jeton OneDrive', content: buf.toString('base64') };
   if (sha) body.sha = sha;
   const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${SECRET_PATH}`, {
     method: 'PUT',
@@ -73,35 +73,90 @@ async function ghPutSecret(buf, sha) {
 
 /* ---------- Access token (cache mémoire tant que la lambda est chaude) ---------- */
 let _cache = { token: null, exp: 0 };
+let _inflight = null; // dédoublonne les renouvellements concurrents d'une même instance
 function err428() { const e = new Error('onedrive_non_connecte'); e.code = 428; return e; }
+
+// Le fichier chiffré contient depuis z86 un JSON {refresh_token, access_token, access_exp}
+// (l'ancien format « refresh token brut » reste lu de façon transparente).
+async function readStored() {
+  const enc = await ghGetSecret();
+  if (!enc) return null;
+  let txt;
+  try { txt = decrypt(enc.buf, process.env.MS_ENC_KEY); }
+  catch { return { bad: true, sha: enc.sha }; } // MS_ENC_KEY changée → refaire la connexion
+  let obj;
+  try { obj = JSON.parse(txt); } catch { obj = { refresh_token: txt }; }
+  if (!obj.refresh_token) obj = { refresh_token: txt };
+  return { obj, sha: enc.sha };
+}
+
+// Push avec gestion du conflit 409 (une autre instance a écrit entre-temps :
+// on relit le sha et on réessaie — le jeton le plus récent doit gagner)
+async function pushStored(obj, sha) {
+  const buf = encrypt(JSON.stringify(obj), process.env.MS_ENC_KEY);
+  for (let i = 0; i < 3; i++) {
+    try { await ghPutSecret(buf, sha); return true; }
+    catch (e) {
+      if (!/409/.test(e.message)) throw e;
+      const cur = await ghGetSecret();
+      sha = cur ? cur.sha : undefined;
+    }
+  }
+  return false;
+}
+
+async function refreshOnce() {
+  let st = await readStored();
+  if (!st || st.bad) throw err428();
+
+  // 1. Access token stocké encore valable → zéro appel Microsoft, zéro rotation
+  if (st.obj.access_token && st.obj.access_exp && Date.now() < st.obj.access_exp - 120000) {
+    _cache = { token: st.obj.access_token, exp: st.obj.access_exp };
+    return _cache.token;
+  }
+
+  // 2. Échange du refresh token — 2 tentatives, avec relecture du fichier entre
+  //    les deux (une autre instance a pu le renouveler pendant ce temps)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.MS_CLIENT_ID,
+        client_secret: process.env.MS_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: st.obj.refresh_token,
+        scope: SCOPE
+      })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.access_token) {
+      _cache = { token: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+      const newObj = {
+        refresh_token: j.refresh_token || st.obj.refresh_token,
+        access_token: j.access_token,
+        access_exp: _cache.exp
+      };
+      try { await pushStored(newObj, st.sha); }
+      catch (e) { console.warn('Sauvegarde jeton OneDrive non poussée:', e.message); }
+      return _cache.token;
+    }
+    // Refus Microsoft : attendre 1,5 s puis relire le fichier avant de conclure
+    await new Promise(rs => setTimeout(rs, 1500));
+    st = await readStored();
+    if (!st || st.bad) break;
+    if (st.obj.access_token && st.obj.access_exp && Date.now() < st.obj.access_exp - 120000) {
+      _cache = { token: st.obj.access_token, exp: st.obj.access_exp };
+      return _cache.token;
+    }
+  }
+  throw err428();
+}
 
 async function getAccessToken() {
   if (_cache.token && Date.now() < _cache.exp - 120000) return _cache.token;
-  const enc = await ghGetSecret();
-  if (!enc) throw err428();
-  let refresh;
-  try { refresh = decrypt(enc.buf, process.env.MS_ENC_KEY); }
-  catch { throw err428(); } // MS_ENC_KEY changée → secret illisible → refaire la connexion
-  const r = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.MS_CLIENT_ID,
-      client_secret: process.env.MS_CLIENT_SECRET,
-      grant_type: 'refresh_token',
-      refresh_token: refresh,
-      scope: SCOPE
-    })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.access_token) throw err428(); // refresh token révoqué/expiré
-  _cache = { token: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
-  // Rotation : re-chiffrer et re-pousser le nouveau refresh token
-  if (j.refresh_token && j.refresh_token !== refresh) {
-    try { await ghPutSecret(encrypt(j.refresh_token, process.env.MS_ENC_KEY), enc.sha); }
-    catch (e) { console.warn('Rotation refresh token non poussée:', e.message); }
-  }
-  return _cache.token;
+  if (!_inflight) _inflight = refreshOnce().finally(() => { _inflight = null; });
+  return _inflight;
 }
 
 /* ---------- Corps brut (bodyParser désactivé) ---------- */

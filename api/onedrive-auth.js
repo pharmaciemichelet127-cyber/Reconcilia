@@ -100,7 +100,7 @@ export default async function handler(req, res) {
     }
 
     // Chiffrer et pousser le refresh token dans le repo
-    const encBuf = encrypt(tj.refresh_token, process.env.MS_ENC_KEY);
+    const encBuf = encrypt(JSON.stringify({ refresh_token: tj.refresh_token }), process.env.MS_ENC_KEY);
     const ghHeaders = {
       'Authorization': 'Bearer ' + process.env.GH_TOKEN,
       'Accept': 'application/vnd.github+json',
