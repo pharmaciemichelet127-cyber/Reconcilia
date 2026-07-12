@@ -3750,7 +3750,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260712z87';
+const APP_VERSION = '2.0.20260712z88';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -4712,8 +4712,8 @@ async function saveToOneDrive() {
     await fetch('https://graph.microsoft.com/v1.0' + OD_REJECTED_PATH, {method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify([...rejectedIds],null,2)});
     // Sauvegarder le store (BL + Factures) pour persistance entre sessions
     const storeSnapshot = {
-      bl: store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,lgoNumeroBL:d.lgoNumeroBL||''})),
-      fac: store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null}))
+      bl: store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,lgoNumeroBL:d.lgoNumeroBL||'',contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null})),
+      fac: store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null}))
     };
     await fetch('https://graph.microsoft.com/v1.0' + OD_STORE_PATH, {method:'PUT',headers:{'Authorization':'Bearer '+_odToken,'Content-Type':'application/json'},body:JSON.stringify(storeSnapshot,null,2)});
     // Sauvegarder les réceptions LGPI
@@ -4843,7 +4843,7 @@ async function loadFromOneDrive() {
   }
 }
 
-function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));localStorage.setItem('reconcilia-retours',JSON.stringify(retoursList));}catch(e){}}
+function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));localStorage.setItem('reconcilia-retours',JSON.stringify(retoursList));}catch(e){}}
 function loadStateLocal(){loadCommandesLocal();try{const rej=localStorage.getItem('reconcilia-rejected');if(rej)JSON.parse(rej).forEach(id=>rejectedIds.add(id));}catch(e){}try{const s=localStorage.getItem('reconcilia-store');if(s){const p=JSON.parse(s);store.bl=(p.bl||[]).map(d=>({...d,base64:null}));store.fac=(p.fac||[]).map(d=>({...d,base64:null}));}const h=localStorage.getItem('reconcilia-history');if(h)history=JSON.parse(h);const a=localStorage.getItem('reconcilia-aliases');if(a)aliases=JSON.parse(a);const c=localStorage.getItem('reconcilia-classifier');if(c){const cm=JSON.parse(c);if(cm&&cm.rules)classifierMemory=cm;}const ln=localStorage.getItem('reconcilia-labonorms');if(ln){const lnp=JSON.parse(ln);if(Array.isArray(lnp))laboNorms=lnp;}const lg=localStorage.getItem('reconcilia-lgpi');if(lg){const lgp=JSON.parse(lg);if(Array.isArray(lgp))lgpiReceptions=lgp;}const lgpend=localStorage.getItem('reconcilia-lgpi-pending');if(lgpend){const lgpp=JSON.parse(lgpend);if(Array.isArray(lgpp))lgpiPendingList=lgpp;}const sbl=localStorage.getItem('reconcilia-sans-bl');if(sbl){const sblp=JSON.parse(sbl);if(Array.isArray(sblp))sansBLList=sblp;}const rcp=localStorage.getItem('reconcilia-recphys');if(rcp){try{const rcpp=JSON.parse(rcp);if(Array.isArray(rcpp))recPhysList=rcpp;}catch(e){}}const penv=localStorage.getItem('reconcilia-preuves-envoi');if(penv){try{const pp=JSON.parse(penv);if(Array.isArray(pp))preuveEnvoiList=pp;}catch(e){}}const lit=localStorage.getItem('reconcilia-litiges');if(lit){try{const litp=JSON.parse(lit);if(Array.isArray(litp))litigesList=litp;}catch(e){}}const ret=localStorage.getItem('reconcilia-retours');if(ret){try{const retp=JSON.parse(ret);if(Array.isArray(retp))retoursList=retp;}catch(e){}}const lgc=localStorage.getItem('reconcilia-lgpi-config');if(lgc){const lgcp=JSON.parse(lgc);if(lgcp&&typeof lgcp==='object')lgpiConfig={...lgpiConfig,...lgcp,high:{...lgpiConfig.high,...lgcp.high},medium:{...lgpiConfig.medium,...lgcp.medium}};}}catch(e){}}
 // Migration : recalculer incomplet pour les réceptions existantes
 if (recPhysList && recPhysList.length) {
@@ -5114,6 +5114,38 @@ async function syncFolder(token,path,type){
 
 function isOdIdPaired(odId){if(rejectedIds.has(odId))return true;const ids=new Set([...history.filter(h=>h.statut==='validée').map(h=>h.blOdId).filter(Boolean),...history.filter(h=>h.statut==='validée').map(h=>h.facOdId).filter(Boolean)]);return ids.has(odId);}
 
+// ════ z88 : DÉDUPLICATION PAR CONTENU (SHA-256) ════
+function sha256Hex(buf){
+  return crypto.subtle.digest('SHA-256', buf).then(h => [...new Uint8Array(h)].map(b => b.toString(16).padStart(2,'0')).join(''));
+}
+
+// Cherche un document existant au contenu identique.
+// 1) hash déjà connu → comparaison directe
+// 2) anciens documents sans hash : présélection par taille identique, puis
+//    téléchargement ciblé pour calculer et mémoriser leur hash (rattrapage progressif)
+async function findContentDuplicate(doc, hashHex, sizeBytes, token){
+  const others = [...store.bl, ...store.fac].filter(d => d !== doc && d.odId && d.odId !== doc.odId);
+  const direct = others.find(d => d.contentHash === hashHex);
+  if (direct) return direct;
+  const kb = Math.round(sizeBytes / 1024);
+  const cands = others.filter(d => !d.contentHash && (d.sizeBytes ? d.sizeBytes === sizeBytes : parseInt(d.size) === kb));
+  let checked = 0;
+  for (const c of cands) {
+    if (checked >= 5) break; // max 5 téléchargements de rattrapage par fichier importé
+    checked++;
+    try {
+      const r = await fetch('https://graph.microsoft.com/v1.0/me/drive/items/' + c.odId + '/content', {headers:{'Authorization':'Bearer '+token}});
+      if (!r.ok) continue;
+      const b = await r.arrayBuffer();
+      c.sizeBytes = b.byteLength;
+      c.contentHash = await sha256Hex(b);
+      if (c.contentHash === hashHex) { saveStateLocal(); return c; }
+    } catch(e) {}
+  }
+  if (checked) saveStateLocal();
+  return null;
+}
+
 // ════ ANALYSE IA
 // ── CORRECTION 3 : prompt recto/verso + extraction page 1 seulement pour PDF ──
 async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
@@ -5134,6 +5166,23 @@ async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
     }
     if(!dlRes.ok)throw new Error('Téléchargement échoué ('+dlRes.status+') — '+doc.name);
     const blob=await dlRes.blob();
+    // ── z88 : doublon par contenu — si un document existant a exactement les mêmes octets,
+    //    le nouveau fichier est supprimé de OneDrive et blacklisté (comme les règles d'exclusion)
+    try {
+      const _dupBuf = await blob.arrayBuffer();
+      doc.contentHash = await sha256Hex(_dupBuf);
+      doc.sizeBytes = blob.size;
+      const dupOf = await findContentDuplicate(doc, doc.contentHash, blob.size, token);
+      if (dupOf) {
+        logActivity(`🗑 "${doc.name}" — contenu identique à "${dupOf.name}" → doublon supprimé de OneDrive`, 'warn');
+        toast(`🗑 Doublon supprimé : "${doc.name}" (identique à "${dupOf.name}")`, 'warn');
+        if (doc.odId) { rejectedIds.add(doc.odId); deleteFromOneDrive(doc.odId, token); }
+        _processingFiles.delete(odId);
+        _processingFiles.delete(normalize(doc.name));
+        saveStateLocal();
+        return;
+      }
+    } catch(e) { console.warn('Dédup contenu:', e); }
     const isPDF=blob.type==='application/pdf';
     const base64=blob.type.startsWith('image/')?await compressBlob(blob,1600,0.82):await blobToBase64(blob);
     doc.base64=base64;
