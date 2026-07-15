@@ -3767,7 +3767,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260715z94';
+const APP_VERSION = '2.0.20260715z95';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -5230,13 +5230,13 @@ async function downloadAndAnalyze(doc,odId,token,routeToClassifier=false){
 
     // Prompt complet (avec EAN)
     const prompt=`Analyse ce document pharmaceutique. JSON uniquement, sans backticks.
-Règles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). isDocument:false si logo/pub.
-{"ref":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
+Règles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). numeroBL=n° du bon de livraison référencé sur le document (souvent « N° BL », « Bon de livraison n° » sur les factures), sinon vide. isDocument:false si logo/pub.
+{"ref":"","numeroBL":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
 
     // Prompt allégé (sans EAN) pour les gros documents — fallback si timeout
     const promptLight=`Analyse ce document pharmaceutique. JSON uniquement, sans backticks.
 Retourne UNIQUEMENT les infos d'en-tête, sans les EAN (document trop lourd).
-{"ref":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[],"docType":"bl|fac|avoir|unknown","confidence":"medium","reasoning":"analyse partielle - EAN non extrait","isDocument":true}`;
+{"ref":"","numeroBL":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[],"docType":"bl|fac|avoir|unknown","confidence":"medium","reasoning":"analyse partielle - EAN non extrait","isDocument":true}`;
 
     const makeContent = (p) => isPDF
       ? [{type:'document',source:{type:'base64',media_type:mediaType,data:b64}},{type:'text',text:p}]
@@ -5322,7 +5322,7 @@ Retourne UNIQUEMENT les infos d'en-tête, sans les EAN (document trop lourd).
       return;
     }
 
-    doc.fields={ref:(doc.type==='bl'?doc.fields?.ref||'':parsed.ref||''),date:parsed.date||'',datePaiement:parsed.datePaiement||'',fournisseur:normalizeLaboName(parsed.fournisseur||''),montantHT:parsed.montantHT||'',tva:parsed.tva||'',ttc:parsed.ttc||''};
+    doc.fields={ref:(doc.type==='bl'?doc.fields?.ref||'':parsed.ref||''),numeroBL:parsed.numeroBL||doc.fields?.numeroBL||'',date:parsed.date||'',datePaiement:parsed.datePaiement||'',fournisseur:normalizeLaboName(parsed.fournisseur||''),montantHT:parsed.montantHT||'',tva:parsed.tva||'',ttc:parsed.ttc||''};
     doc.eans=(parsed.eans||[]).map(e=>({ean:String(e.ean||''),designation:String(e.designation||''),qte:parseFloat(e.qte)||0,prixU:e.prixU!=null?parseFloat(e.prixU)||null:null}));
     doc.status=parsed.confidence==='low'?'warn':'ok';
 
@@ -5513,7 +5513,69 @@ overlay.style.display = 'flex';
 function validatePanelPair(){if(!_panelPair)return;quickValidate(_panelPair.bl.id,_panelPair.fac.id);}
 
 // ════ SUGGESTIONS
-function computeSuggestions(){const pairedBL=new Set(history.filter(h=>h.statut==='validée').map(h=>h.blId));const pairedFAC=new Set(history.filter(h=>h.statut==='validée').map(h=>h.facId));const bls=store.bl.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedBL.has(d.id));const facs=store.fac.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedFAC.has(d.id));const suggestions=[];for(const bl of bls){let best=null,bestScore=0;for(const fac of facs){if(history.some(h=>h.blId===bl.id&&h.facId===fac.id))continue;const score=computeScore(bl,fac);if(score>bestScore){bestScore=score;best=fac;}}if(best&&bestScore>=60)suggestions.push({bl,fac:best,score:bestScore});}suggestions.sort((a,b)=>b.score-a.score);renderSuggestions(suggestions);}
+// ════ z95 : RAPPROCHEMENT AUTOMATIQUE PAR N° BL (règle stricte + contrôle de cohérence) ════
+function _normNumBL(v){return (v||'').toString().toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function _blNumOf(bl){return _normNumBL(bl.fields?.ref||bl.lgoNumeroBL||'');}
+function _facMatchesNumBL(fac,blNum){
+  if(!blNum||blNum.length<4)return false;
+  if(_normNumBL(fac.fields?.numeroBL)===blNum)return true;
+  if(_normNumBL(fac.fields?.ref)===blNum)return true;
+  if(blNum.length>=5&&_normNumBL(fac.name).includes(blNum))return true;
+  return false;
+}
+function isCoherentPair(bl,fac){
+  const reasons=[];
+  const f1=normalize(bl.fields?.fournisseur||''),f2=normalize(fac.fields?.fournisseur||'');
+  if(f1&&f2){
+    const okF=f1===f2||f1.includes(f2.slice(0,5))||f2.includes(f1.slice(0,5))||isGrossiste(f1)||isGrossiste(f2)||textSimilarity(f1,f2)>=0.7;
+    if(!okF)reasons.push(`fournisseurs différents (${bl.fields.fournisseur||'?'} vs ${fac.fields.fournisseur||'?'})`);
+  }
+  const m1=parseFloat((bl.fields?.montantHT||'').toString().replace(',','.'));
+  const m2=parseFloat((fac.fields?.montantHT||'').toString().replace(',','.'));
+  if(!isNaN(m1)&&!isNaN(m2)&&m1>0&&m2>0){
+    const diff=Math.abs(m1-m2), tol=Math.max(1, m1*0.02); // tolérance 2 % ou 1 €
+    if(diff>tol)reasons.push(`montants HT éloignés (${m1.toFixed(2)} € vs ${m2.toFixed(2)} €)`);
+  }
+  return {ok:reasons.length===0, reasons};
+}
+let _numBLWarned=new Set();
+function applyAutoMatchByNumBL(){
+  const pairedBL=new Set(history.filter(h=>h.statut==='validée').map(h=>h.blId));
+  const pairedFAC=new Set(history.filter(h=>h.statut==='validée').map(h=>h.facId));
+  const bls=store.bl.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedBL.has(d.id));
+  const facs=store.fac.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedFAC.has(d.id));
+  let validated=0; const pending=[]; const takenFac=new Set();
+  for(const bl of bls){
+    const num=_blNumOf(bl); if(!num||num.length<4)continue;
+    const matches=facs.filter(f=>!takenFac.has(f.id)&&_facMatchesNumBL(f,num));
+    if(!matches.length)continue;
+    if(matches.length>1){
+      const k='multi:'+num;
+      if(!_numBLWarned.has(k)){_numBLWarned.add(k);logActivity(`⚠ N° BL ${num} présent sur ${matches.length} factures — rapprochement automatique suspendu, vérification manuelle requise`,'warn');}
+      pending.push({bl,fac:matches[0],score:100,numMatch:true});
+      continue;
+    }
+    const fac=matches[0];
+    const coh=isCoherentPair(bl,fac);
+    if(coh.ok){
+      takenFac.add(fac.id);
+      addToHistoryLocal(bl,fac,'validée');
+      const last=history[history.length-1]; if(last)last.autoNumBL=true;
+      store.bl=store.bl.filter(d=>d.id!==bl.id);
+      store.fac=store.fac.filter(d=>d.id!==fac.id);
+      validated++;
+      logActivity(`⚡ Rapprochement automatique par N° BL ${num} : "${bl.name}" ↔ "${fac.name}"`,'ok');
+      toast(`⚡ Rapprochement auto N° BL ${num} — ${bl.fields.fournisseur||bl.name}`,'success');
+    } else {
+      const k='incoh:'+num+':'+fac.id;
+      if(!_numBLWarned.has(k)){_numBLWarned.add(k);logActivity(`⚠ N° BL ${num} commun mais incohérence : ${coh.reasons.join(' · ')} — validation manuelle requise`,'warn');toast(`⚠ N° BL ${num} : incohérence — ${coh.reasons[0]}`,'warn');}
+      pending.push({bl,fac,score:100,numMatch:true});
+    }
+  }
+  if(validated){renderDocs();renderHistory();updateNav();updatePairSelectors();saveStateLocal();try{saveAll();}catch(e){}}
+  return pending;
+}
+function computeSuggestions(){const numPending=applyAutoMatchByNumBL();const pendingKeys=new Set(numPending.map(p=>p.bl.id+'|'+p.fac.id));const pairedBL=new Set(history.filter(h=>h.statut==='validée').map(h=>h.blId));const pairedFAC=new Set(history.filter(h=>h.statut==='validée').map(h=>h.facId));const bls=store.bl.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedBL.has(d.id));const facs=store.fac.filter(d=>(d.status==='ok'||d.status==='warn')&&!pairedFAC.has(d.id));const suggestions=[];for(const bl of bls){let best=null,bestScore=0;for(const fac of facs){if(history.some(h=>h.blId===bl.id&&h.facId===fac.id))continue;if(pendingKeys.has(bl.id+'|'+fac.id))continue;const score=computeScore(bl,fac);if(score>bestScore){bestScore=score;best=fac;}}if(best&&bestScore>=60)suggestions.push({bl,fac:best,score:bestScore});}suggestions.sort((a,b)=>b.score-a.score);renderSuggestions([...numPending,...suggestions]);}
 function isGrossiste(nom){
   const grossistes=['alloga','ocp','cerp','phoenix','alliance','coalia','sdis','giropharm','eurodep','movianto','csp','bpd','dtf','pharmat','medis','pharmedis','soprodi'];
   const n=normalize(nom||'');
@@ -5560,7 +5622,7 @@ function _renderSuggestionsTable(suggestions){
   });
   const groups=[...byMonth.entries()].sort((a,b)=>b[0].localeCompare(a[0]));
   const TABLE_HEAD=`<div style="display:grid;grid-template-columns:150px 1fr 1fr 70px 120px;padding:8px 16px;background:var(--surface2);border-bottom:2px solid var(--border);font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.5px"><div>Laboratoire</div><div>📦 Bon de Livraison</div><div>🧾 Facture</div><div style="text-align:center">Match</div><div style="text-align:right">Actions</div></div>`;
-  const ROW=({bl,fac,score})=>{
+  const ROW=({bl,fac,score,numMatch})=>{
     const color=score>=80?'var(--green)':score>=60?'var(--warn)':'var(--danger)';
     const labo=bl.fields.fournisseur||fac.fields.fournisseur||'—';
     return `<div style="display:grid;grid-template-columns:150px 1fr 1fr 70px 120px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background 0.15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -5573,7 +5635,7 @@ function _renderSuggestionsTable(suggestions){
         <div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${fac.name}">${fac.name}</div>
         <div style="font-size:10px;color:var(--ink2);margin-top:2px">${fac.fields.date||'—'} · ${fac.fields.montantHT?fac.fields.montantHT+' €':'—'}</div>
       </div>
-      <div style="text-align:center;font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${color}">${score}%</div>
+      <div style="text-align:center;font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${color}">${score}%${numMatch?'<div style="font-size:9px;color:var(--accent);font-weight:700;letter-spacing:0.5px">N° BL =</div>':''}</div>
       <div style="display:flex;gap:5px;justify-content:flex-end">
         <button class="btn btn-blue btn-sm" onclick="openPanel(store.bl.find(d=>d.id==='${bl.id}'),store.fac.find(d=>d.id==='${fac.id}'))" style="font-size:11px;padding:4px 8px">🔍</button>
         <button class="btn btn-green btn-sm" onclick="quickValidate('${bl.id}','${fac.id}')" style="font-size:11px;padding:4px 8px">✅</button>
@@ -9281,7 +9343,7 @@ async function reclassifyDoc(docId, type) {
     return;
   }
 
-  const prompt = `Analyse ce document pharmaceutique. JSON uniquement, sans backticks.\nRègles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). isDocument:false si logo/pub.\n{"ref":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
+  const prompt = `Analyse ce document pharmaceutique. JSON uniquement, sans backticks.\nRègles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). numeroBL=n° du bon de livraison référencé sur le document (souvent « N° BL », « Bon de livraison n° » sur les factures), sinon vide. isDocument:false si logo/pub.\n{"ref":"","numeroBL":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
   const content_msg = isPDF
     ? [{type:'document',source:{type:'base64',media_type:mediaType,data:b64}},{type:'text',text:prompt}]
     : [{type:'image',source:{type:'base64',media_type:mediaType,data:b64}},{type:'text',text:prompt}];
@@ -9315,7 +9377,7 @@ async function reclassifyDoc(docId, type) {
   }
 
   // Mettre à jour les champs
-  doc.fields = {ref:(doc.type==='bl'?doc.fields?.ref||'':parsed.ref||''), date:parsed.date||'', fournisseur:normalizeLaboName(parsed.fournisseur||''), montantHT:parsed.montantHT||'', tva:parsed.tva||'', ttc:parsed.ttc||''};
+  doc.fields = {ref:(doc.type==='bl'?doc.fields?.ref||'':parsed.ref||''), numeroBL:parsed.numeroBL||doc.fields?.numeroBL||'', date:parsed.date||'', fournisseur:normalizeLaboName(parsed.fournisseur||''), montantHT:parsed.montantHT||'', tva:parsed.tva||'', ttc:parsed.ttc||''};
   doc.eans = (parsed.eans||[]).map(e => ({ean:String(e.ean||''), designation:String(e.designation||''), qte:parseFloat(e.qte)||0, prixU:e.prixU!=null?parseFloat(e.prixU)||null:null}));
   doc.status = parsed.confidence === 'low' ? 'warn' : 'ok';
 
@@ -11329,7 +11391,7 @@ async function analyzeDocBase64(doc) {
     const isPDF = doc.base64.startsWith('data:application/pdf');
     const b64 = doc.base64.split(',')[1];
     const mediaType = isPDF ? 'application/pdf' : 'image/jpeg';
-    const prompt = `Analyse ce document pharmaceutique. JSON uniquement, sans backticks.\nRègles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). isDocument:false si logo/pub.\n{"ref":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
+    const prompt = `Analyse ce document pharmaceutique. JSON uniquement, sans backticks.\nRègles: ignore pub/recto-verso. EAN/CIP13=13 chiffres priorité. Additionne qtés même EAN. Fournisseur=labo fabricant pas grossiste(ALLOGA/OCP/CERP). numeroBL=n° du bon de livraison référencé sur le document (souvent « N° BL », « Bon de livraison n° » sur les factures), sinon vide. isDocument:false si logo/pub.\n{"ref":"","numeroBL":"","date":"JJ/MM/AAAA","fournisseur":"labo","montantHT":"","tva":"","ttc":"","eans":[{"ean":"13chiffres","designation":"nom","qte":0,"prixU":null}],"docType":"bl|fac|avoir|unknown","confidence":"high|medium|low","reasoning":"1 phrase","isDocument":true}`;
     const content = isPDF
       ? [{type:'document',source:{type:'base64',media_type:mediaType,data:b64}},{type:'text',text:prompt}]
       : [{type:'image',source:{type:'base64',media_type:mediaType,data:b64}},{type:'text',text:prompt}];
