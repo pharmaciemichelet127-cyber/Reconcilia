@@ -250,6 +250,8 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes toastOut { from{opacity:1;}to{opacity:0;transform:translateX(12px);} }
 
 /* ════ TABLEAU BL (z92) ════ */
+.bl-two-col{display:grid;grid-template-columns:minmax(0,2.6fr) minmax(230px,1fr);gap:14px}
+@media (max-width:900px){ .bl-two-col{grid-template-columns:1fr} }
 .bl-thead{display:grid;grid-template-columns:minmax(150px,2fr) 105px 90px 48px minmax(220px,1fr);gap:10px;align-items:center;padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.5px}
 .bl-trow{display:grid;grid-template-columns:minmax(150px,2fr) 105px 90px 48px minmax(220px,1fr);gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:6px}
 .bl-trow:hover{box-shadow:var(--shadow-lg)}
@@ -828,7 +830,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
       au <input type="date" id="bl-date-to" onchange="renderDocsBL()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);font-size:12px;outline:none">
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div class="bl-two-col">
     <div class="docs-zone">
       <div class="docs-header"><div class="docs-icon bl">🚚</div><div class="docs-title">Bons de Livraison</div><div class="docs-count" id="count-bl2">0</div></div>
       <div id="list-bl2"><div class="storage-empty">Aucun BL</div></div>
@@ -3765,7 +3767,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260715z93';
+const APP_VERSION = '2.0.20260715z94';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
