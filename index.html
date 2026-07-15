@@ -249,6 +249,16 @@ main.panel-open { margin-right:var(--panel-width); max-width:none; }
 @keyframes toastIn { from{opacity:0;transform:translateX(12px);}to{opacity:1;transform:translateX(0);} }
 @keyframes toastOut { from{opacity:1;}to{opacity:0;transform:translateX(12px);} }
 
+/* ════ TABLEAU BL (z92) ════ */
+.bl-thead{display:grid;grid-template-columns:minmax(160px,2fr) 110px 95px 55px minmax(230px,1fr);gap:10px;align-items:center;padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:0.5px}
+.bl-trow{display:grid;grid-template-columns:minmax(160px,2fr) 110px 95px 55px minmax(230px,1fr);gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:6px}
+.bl-trow:hover{box-shadow:var(--shadow-lg)}
+.bl-td-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+@media (max-width:760px){
+  .bl-thead{display:none}
+  .bl-trow{grid-template-columns:1fr 1fr;gap:6px}
+  .bl-td-actions{grid-column:1 / -1;justify-content:flex-start}
+}
 /* ════ CLASSIFIER ════ */
 .classifier-card {
   background:var(--surface);
@@ -3750,7 +3760,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260715z91';
+const APP_VERSION = '2.0.20260715z92';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -9149,6 +9159,8 @@ function renderDocs(){
   updateNav();
 }
 function renderDocItem(doc){
+  // z92 : les BL sont rendus en lignes de tableau → toujours re-rendre la liste complète
+  if(doc.type==='bl'){ renderDocsBL(); updateNav(); return; }
   const ex=document.getElementById('ditem-'+doc.id);
   const el=buildDocEl(doc);
   if(ex){
@@ -9171,6 +9183,26 @@ const openBtn=doc.odId?`<button class="btn-icon" onclick="previewDoc('${doc.id}'
 const warnBtns=doc.status==='warn'?`<button class="btn-icon" onclick="forceDocReady('${doc.id}','${doc.type}')" title="Forcer Prêt" style="border-color:var(--green);color:var(--green)">✓</button><button class="btn-icon" onclick="reclassifyDoc('${doc.id}','${doc.type}')" title="Reclassifier avec l'IA" style="border-color:var(--accent2);color:var(--accent2)">🤖</button>`:'';
 const bcBtn = isBL && doc.status==='ok' ? `<button class="btn-icon" onclick="generateBcFromBL('${doc.id}')" title="Générer codes-barres" style="border-color:var(--green);color:var(--green)">🔍</button>` : '';
 div.innerHTML=`<div style="font-size:20px;flex-shrink:0">${doc.name.match(/\.pdf$/i)?'📄':'🖼'}</div><div class="doc-info"><div class="doc-name">${doc.name}</div><div class="doc-meta">${refBadge}${meta||doc.size} · ${doc.eans.length} EAN</div></div>${sMap[doc.status]||''}${warnBtns}${bcBtn}${openBtn}<button class="btn-icon" onclick="openEditDoc('${doc.id}','${doc.type}')" title="Modifier" style="border-color:var(--accent2);color:var(--accent2)">✏️</button><button class="btn-icon" onclick="manualDelete('${doc.id}','${doc.type}')" title="Supprimer">🗑</button>`;return div;}
+
+// z92 : ligne tableau pour l'onglet BL — colonnes Fournisseur | N° BL | Date | EAN | Statut·Actions
+function buildDocRowBL(doc){
+  const div=document.createElement('div');div.className='bl-trow';div.id='ditem-'+doc.id;
+  const sMap={pending:'<span class="doc-status pending">En attente</span>',processing:`<span class="doc-status processing"><span class="spin"></span>IA…</span>`,ok:'<span class="doc-status ok">✓ Prêt</span>',warn:'<span class="doc-status warn">⚠ Vérifier</span>'};
+  const _refNum=(doc.fields?.ref||doc.lgoNumeroBL||'');
+  const openBtn=doc.odId?`<button class="btn-icon" onclick="previewDoc('${doc.id}','bl')" title="Voir le document" style="border-color:var(--accent2);color:var(--accent2)">👁</button>`:'';
+  const warnBtns=doc.status==='warn'?`<button class="btn-icon" onclick="forceDocReady('${doc.id}','bl')" title="Forcer Prêt" style="border-color:var(--green);color:var(--green)">✓</button><button class="btn-icon" onclick="reclassifyDoc('${doc.id}','bl')" title="Reclassifier avec l'IA" style="border-color:var(--accent2);color:var(--accent2)">🤖</button>`:'';
+  const bcBtn=doc.status==='ok'?`<button class="btn-icon" onclick="generateBcFromBL('${doc.id}')" title="Générer codes-barres" style="border-color:var(--green);color:var(--green)">🔍</button>`:'';
+  div.innerHTML=`
+    <div style="min-width:0">
+      <div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${doc.fields?.fournisseur||'—'}</div>
+      <div style="font-size:10px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${doc.name}">${doc.name.match(/\.pdf$/i)?'📄':'🖼'} ${doc.name}${doc.fields?.montantHT?' · '+doc.fields.montantHT+' € HT':''}</div>
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)">${_refNum?('N° '+_refNum):'<span style="color:var(--ink2);font-weight:400">—</span>'}</div>
+    <div style="font-size:12px;font-family:'JetBrains Mono',monospace">${doc.fields?.date||'—'}</div>
+    <div style="font-size:12px;font-family:'JetBrains Mono',monospace;text-align:center;font-weight:700">${(doc.eans||[]).length}</div>
+    <div class="bl-td-actions">${sMap[doc.status]||''}${warnBtns}${bcBtn}${openBtn}<button class="btn-icon" onclick="openEditDoc('${doc.id}','bl')" title="Modifier" style="border-color:var(--accent2);color:var(--accent2)">✏️</button><button class="btn-icon" onclick="manualDelete('${doc.id}','bl')" title="Supprimer">🗑</button></div>`;
+  return div;
+}
 
 function forceDocReady(docId, type) {
   // Chercher dans tous les stores au cas où le type est incorrect
@@ -10004,7 +10036,8 @@ function renderDocsBL() {
   const groups = _groupByMonth(filtered);
   groups.forEach(([key, docs]) => {
     el.insertAdjacentHTML('beforeend', _renderMonthHeaderBL(key, docs));
-    docs.forEach(doc => { doc.type='bl'; el.appendChild(buildDocEl(doc)); });
+    el.insertAdjacentHTML('beforeend', '<div class="bl-thead"><div>Fournisseur</div><div>N° BL</div><div>Date</div><div style="text-align:center">EAN</div><div style="text-align:right">Statut · Actions</div></div>');
+    docs.forEach(doc => { doc.type='bl'; el.appendChild(buildDocRowBL(doc)); });
   });
   // Sans BL
   const el2 = document.getElementById('list-sansbl2');
