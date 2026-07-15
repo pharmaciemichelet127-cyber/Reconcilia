@@ -3750,7 +3750,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260712z88';
+const APP_VERSION = '2.0.20260715z89';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -4185,6 +4185,8 @@ async function classifyDoc(docId, chosenType, wasCorrection, lgoNumeroBL='') {
 
   qDoc.type = chosenType;
   if (chosenType === 'bl') {
+    // z89 : le N° BL saisi doit être visible (badge) et cherchable (filtre) → propagation dans fields.ref
+    if (lgoNumeroBL) { qDoc.fields = qDoc.fields || {}; if (!qDoc.fields.ref) qDoc.fields.ref = lgoNumeroBL; }
     store.bl.push({...qDoc, type:'bl', lgoNumeroBL: lgoNumeroBL||''});
   } else if (chosenType === 'fac') {
     store.fac.push({...qDoc, type:'fac'});
@@ -4843,7 +4845,7 @@ async function loadFromOneDrive() {
   }
 }
 
-function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));localStorage.setItem('reconcilia-retours',JSON.stringify(retoursList));}catch(e){}}
+function saveStateLocal(){try{localStorage.setItem('reconcilia-rejected',JSON.stringify([...rejectedIds]));}catch(e){}try{localStorage.setItem('reconcilia-store',JSON.stringify({bl:store.bl.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,lgoNumeroBL:d.lgoNumeroBL||'',contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null})),fac:store.fac.map(d=>({id:d.id,name:d.name,size:d.size,status:d.status,fields:d.fields,eans:d.eans,odId:d.odId,odWebUrl:d.odWebUrl||null,contentHash:d.contentHash||null,sizeBytes:d.sizeBytes||null}))}));localStorage.setItem('reconcilia-history',JSON.stringify(history));localStorage.setItem('reconcilia-aliases',JSON.stringify(aliases));localStorage.setItem('reconcilia-classifier',JSON.stringify(classifierMemory));localStorage.setItem('reconcilia-labonorms',JSON.stringify(laboNorms));localStorage.setItem('reconcilia-lgpi',JSON.stringify(lgpiReceptions));localStorage.setItem('reconcilia-lgpi-pending',JSON.stringify(lgpiPendingList));localStorage.setItem('reconcilia-sans-bl',JSON.stringify(sansBLList));localStorage.setItem('reconcilia-recphys',JSON.stringify(recPhysList.map(r=>({...r,photoBase64:null}))));localStorage.setItem('reconcilia-preuves-envoi',JSON.stringify(preuveEnvoiList.map(p=>({...p,photoBase64:null}))));localStorage.setItem('reconcilia-lgpi-config',JSON.stringify(lgpiConfig));localStorage.setItem('reconcilia-litiges',JSON.stringify(litigesList));localStorage.setItem('reconcilia-retours',JSON.stringify(retoursList));}catch(e){}}
 function loadStateLocal(){loadCommandesLocal();try{const rej=localStorage.getItem('reconcilia-rejected');if(rej)JSON.parse(rej).forEach(id=>rejectedIds.add(id));}catch(e){}try{const s=localStorage.getItem('reconcilia-store');if(s){const p=JSON.parse(s);store.bl=(p.bl||[]).map(d=>({...d,base64:null}));store.fac=(p.fac||[]).map(d=>({...d,base64:null}));}const h=localStorage.getItem('reconcilia-history');if(h)history=JSON.parse(h);const a=localStorage.getItem('reconcilia-aliases');if(a)aliases=JSON.parse(a);const c=localStorage.getItem('reconcilia-classifier');if(c){const cm=JSON.parse(c);if(cm&&cm.rules)classifierMemory=cm;}const ln=localStorage.getItem('reconcilia-labonorms');if(ln){const lnp=JSON.parse(ln);if(Array.isArray(lnp))laboNorms=lnp;}const lg=localStorage.getItem('reconcilia-lgpi');if(lg){const lgp=JSON.parse(lg);if(Array.isArray(lgp))lgpiReceptions=lgp;}const lgpend=localStorage.getItem('reconcilia-lgpi-pending');if(lgpend){const lgpp=JSON.parse(lgpend);if(Array.isArray(lgpp))lgpiPendingList=lgpp;}const sbl=localStorage.getItem('reconcilia-sans-bl');if(sbl){const sblp=JSON.parse(sbl);if(Array.isArray(sblp))sansBLList=sblp;}const rcp=localStorage.getItem('reconcilia-recphys');if(rcp){try{const rcpp=JSON.parse(rcp);if(Array.isArray(rcpp))recPhysList=rcpp;}catch(e){}}const penv=localStorage.getItem('reconcilia-preuves-envoi');if(penv){try{const pp=JSON.parse(penv);if(Array.isArray(pp))preuveEnvoiList=pp;}catch(e){}}const lit=localStorage.getItem('reconcilia-litiges');if(lit){try{const litp=JSON.parse(lit);if(Array.isArray(litp))litigesList=litp;}catch(e){}}const ret=localStorage.getItem('reconcilia-retours');if(ret){try{const retp=JSON.parse(ret);if(Array.isArray(retp))retoursList=retp;}catch(e){}}const lgc=localStorage.getItem('reconcilia-lgpi-config');if(lgc){const lgcp=JSON.parse(lgc);if(lgcp&&typeof lgcp==='object')lgpiConfig={...lgpiConfig,...lgcp,high:{...lgpiConfig.high,...lgcp.high},medium:{...lgpiConfig.medium,...lgcp.medium}};}}catch(e){}}
 // Migration : recalculer incomplet pour les réceptions existantes
 if (recPhysList && recPhysList.length) {
@@ -9160,7 +9162,8 @@ function renderDocItem(doc){
 }
 function buildDocEl(doc){const div=document.createElement('div');div.className='doc-item';div.id='ditem-'+doc.id;const sMap={pending:'<span class="doc-status pending">En attente</span>',processing:`<span class="doc-status processing"><span class="spin"></span>IA…</span>`,ok:'<span class="doc-status ok">✓ Prêt</span>',warn:'<span class="doc-status warn">⚠ Vérifier</span>'};
 const isBL = doc.type === 'bl';
-const refBadge = (isBL && doc.fields.ref) ? `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--accent-light);color:var(--accent);padding:2px 7px;border-radius:6px;font-weight:700;margin-right:4px">N° ${doc.fields.ref}</span>` : '';
+const _refNum = doc.fields.ref || doc.lgoNumeroBL || '';
+const refBadge = (isBL && _refNum) ? `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--accent-light);color:var(--accent);padding:2px 7px;border-radius:6px;font-weight:700;margin-right:4px">N° ${_refNum}</span>` : '';
 const meta=[doc.fields.fournisseur,doc.fields.date,doc.fields.montantHT?doc.fields.montantHT+' € HT':'',doc.fields.datePaiement?'Éch. '+doc.fields.datePaiement:''].filter(Boolean).join(' · ');
 const openBtn=doc.odId?`<button class="btn-icon" onclick="previewDoc('${doc.id}','${doc.type}')" title="Voir le document" style="border-color:var(--accent2);color:var(--accent2)">👁</button>`:'';
 const warnBtns=doc.status==='warn'?`<button class="btn-icon" onclick="forceDocReady('${doc.id}','${doc.type}')" title="Forcer Prêt" style="border-color:var(--green);color:var(--green)">✓</button><button class="btn-icon" onclick="reclassifyDoc('${doc.id}','${doc.type}')" title="Reclassifier avec l'IA" style="border-color:var(--accent2);color:var(--accent2)">🤖</button>`:'';
@@ -9982,7 +9985,7 @@ function renderDocsBL() {
 
   const filtered = all.filter(d => {
     if (!filterDoc(d, 'docs-filter-labo-bl2', periodeVal === 'custom' ? null : 'docs-filter-periode-bl2')) return false;
-    if (numBLFilter && !(d.fields?.ref||'').toLowerCase().includes(numBLFilter) && !d.name.toLowerCase().includes(numBLFilter)) return false;
+    if (numBLFilter && !(d.fields?.ref||'').toLowerCase().includes(numBLFilter) && !(d.lgoNumeroBL||'').toLowerCase().includes(numBLFilter) && !d.name.toLowerCase().includes(numBLFilter)) return false;
     if (periodeVal === 'custom' && (dateFrom || dateTo)) {
       const docDate = parseDate(d.fields?.date);
       if (!docDate) return false;
