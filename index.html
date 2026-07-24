@@ -3767,7 +3767,7 @@ body.is-mobile .docs-grid { grid-template-columns:1fr; }
 
 <script>
 // ════ CONFIG
-const APP_VERSION = '2.0.20260715z95';
+const APP_VERSION = '2.0.20260724z96';
 // Afficher la version dans le logo dès que le DOM est prêt
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('app-version-display');
@@ -17157,6 +17157,31 @@ async function _odUploadLarge(path, blob, headers){
   return last;
 }
 
+/* ---- v z96 : indicateur global d'analyse IA (banniere non bloquante) ----
+   Quand plusieurs documents arrivent en meme temps, les analyses IA peuvent
+   ralentir l'interface. Cette banniere informe l'utilisateur que l'application
+   travaille et n'est pas plantee. pointer-events:none -> ne bloque jamais rien. */
+let _iaBusyCount = 0, _iaBusyHideTimer = null;
+function _iaBusyUpdate(){
+  let el = document.getElementById('ia-busy-banner');
+  if (_iaBusyCount > 0) {
+    clearTimeout(_iaBusyHideTimer); _iaBusyHideTimer = null;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ia-busy-banner';
+      el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(30,41,59,0.93);color:#fff;padding:10px 20px;border-radius:24px;font-size:12.5px;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,0.3);display:flex;align-items:center;gap:9px;pointer-events:none;max-width:92vw;text-align:center';
+      el.innerHTML = '<span class="spin" style="border-color:rgba(255,255,255,0.3);border-top-color:#fff;margin-right:0"></span><span id="ia-busy-text"></span>';
+      document.body.appendChild(el);
+    }
+    el.style.display = 'flex';
+    const t = document.getElementById('ia-busy-text');
+    if (t) t.textContent = 'Analyse de documents en cours' + (_iaBusyCount > 1 ? ' (' + _iaBusyCount + ' en parallele)' : '') + ' \u2014 l\u2019application peut sembler ralentie, inutile de recharger';
+  } else if (el && !_iaBusyHideTimer) {
+    // delai de 3 s : evite le clignotement entre les pages (pause 2 s entre appels vision)
+    _iaBusyHideTimer = setTimeout(function(){ _iaBusyHideTimer = null; if (_iaBusyCount === 0 && el) el.style.display = 'none'; }, 3000);
+  }
+}
+
 window.fetch = async function(input, init){
   let url = (typeof input === 'string') ? input : ((input && input.url) || '');
 
@@ -17166,7 +17191,12 @@ window.fetch = async function(input, init){
     init = init || {};
     const h = new Headers(init.headers || {});
     h.set('X-Session', authGetSession());
-    return _fetchOriginal(input, { ...init, headers: h });
+    _iaBusyCount++; _iaBusyUpdate();
+    try {
+      return await _fetchOriginal(input, { ...init, headers: h });
+    } finally {
+      _iaBusyCount = Math.max(0, _iaBusyCount - 1); _iaBusyUpdate();
+    }
   }
 
   if (!url.startsWith(GRAPH_BASE)) return _fetchOriginal(input, init);
